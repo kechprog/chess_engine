@@ -6,7 +6,7 @@ use glium::{
 };
 use image::Rgba;
 
-use crate::game::helpers::piece::{Piece, Type};
+use crate::game_repr::{Piece, Type};
 
 #[derive(Clone, Copy)]
 struct Vertex {

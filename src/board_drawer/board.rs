@@ -1,8 +1,5 @@
 use super::{dot_drawer::DotDrawer, tile_drawer::TileDrawer};
-use crate::game::helpers::{
-    game_state::{GameState, Pov},
-    piece::{Piece, Type},
-};
+use crate::game_repr::{Color, Position, Type};
 use glium::{glutin::dpi::PhysicalPosition, Display, Surface};
 use std::rc::Rc;
 
@@ -35,51 +32,36 @@ impl BoardDrawer {
         }
     }
 
-    pub fn draw_position(&mut self, state: &GameState) {
+    pub fn draw_position(&mut self, position: &Position, selected_tile: Option<u8>, pov: Color) {
         let mut target = self.display.draw();
         target.clear_color(0.0, 0.0, 1.0, 1.0);
 
         self.update_board_dimensions();
 
         // draw tiles
-        match state.pov {
-            Pov::White => state
-                .position
-                .board
-                .iter()
-                .enumerate()
-                .for_each(|(idx, p)| {
-                    self.tile_drawer.draw(
-                        idx as usize,
-                        *p,
-                        self.board_dimensions,
-                        false,
-                        &mut target,
-                    )
-                }),
+        match pov {
+            Color::White => position.position.iter().enumerate().for_each(|(idx, p)| {
+                self.tile_drawer
+                    .draw(idx as usize, *p, self.board_dimensions, false, &mut target)
+            }),
 
-            Pov::Black => state
-                .position
-                .board
-                .iter()
-                .enumerate()
-                .for_each(|(idx, p)| {
-                    self.tile_drawer.draw(
-                        63 - idx as usize,
-                        *p,
-                        self.board_dimensions,
-                        false,
-                        &mut target,
-                    )
-                }),
+            Color::Black => position.position.iter().enumerate().for_each(|(idx, p)| {
+                self.tile_drawer.draw(
+                    63 - idx as usize,
+                    *p,
+                    self.board_dimensions,
+                    false,
+                    &mut target,
+                )
+            }),
         }
 
         // draw selected piece
-        if let Some(selected_tile) = state.selected_tile {
-            if state.position.board[selected_tile].piece_type != Type::None {
+        if let Some(selected_tile) = selected_tile {
+            if position.position[selected_tile as usize].piece_type != Type::None {
                 self.tile_drawer.draw(
-                    selected_tile,
-                    state.position.board[selected_tile],
+                    selected_tile as usize,
+                    position.position[selected_tile as usize],
                     self.board_dimensions,
                     true,
                     &mut target,
@@ -89,14 +71,13 @@ impl BoardDrawer {
 
         // TODO: FIX AFTER NORMAL INDEXING
         // draw dots(legal moves)
-        if let Some(selected_tile) = state.selected_tile {
-            state
-                .position
-                .legal_moves(selected_tile)
+        if let Some(selected_tile) = selected_tile {
+            position
+                .legal_moves(selected_tile as usize)
                 .iter()
-                .for_each(|&idx| {
+                .for_each(|_move| {
                     self.dot_drawer
-                        .dot_at(idx as usize, self.board_dimensions, &mut target)
+                        .dot_at(_move._to(), self.board_dimensions, &mut target)
                 });
         }
 
@@ -104,7 +85,7 @@ impl BoardDrawer {
     }
 
     // returns none if the click was outside the board
-    pub fn coord_to_tile(&mut self, coords: PhysicalPosition<f64>) -> Option<usize> {
+    pub fn coord_to_tile(&mut self, coords: PhysicalPosition<f64>) -> Option<u8> {
         self.update_board_dimensions();
         let (x, y) = (
             (coords.x / self.display.gl_window().window().inner_size().width as f64) * 2.0,
@@ -123,6 +104,6 @@ impl BoardDrawer {
 
         let tile_from_bottom = 7 - tile_y;
 
-        Some(tile_from_bottom * 8 + tile_x)
+        Some((tile_from_bottom * 8 + tile_x) as u8)
     }
 }
