@@ -311,7 +311,7 @@ fn draw_piece(piece: Piece, pos: (u8, u8), display: &Display) {
         &[1 as u16, 2, 0, 3],
     ).unwrap();
 
-    // TODO load textures
+    // TODO load textures depending on the piece
     let texture = load_ogl_texture("src/assets/b_pawn_png_1024px.png", display).unwrap();
 
     let shader = program!(display,
