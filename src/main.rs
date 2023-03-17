@@ -1,5 +1,12 @@
 #![allow(unused)]
 
+/*
+ * TODO:
+ * MVP of the board
+ * Heavy refactoring
+ * function -> beautifull object
+ */
+
 // use glium::{
 //     glutin::{event::WindowEvent, event_loop::ControlFlow},
 //     Surface,
@@ -235,6 +242,7 @@ impl Piece {
 // }
 
 use glium::glutin;
+use glium::glutin::event_loop::ControlFlow;
 use glium::implement_vertex;
 use glium::index::PrimitiveType;
 use glium::program;
@@ -253,65 +261,158 @@ fn load_ogl_texture(
     let image_dimensions = image.dimensions();
     Ok(glium::texture::Texture2d::new(
         display,
-        glium::texture::RawImage2d::from_raw_rgba_reversed(&image.into_raw(), image_dimensions),
+        glium::texture::RawImage2d::from_raw_rgba(image.into_raw(), image_dimensions),
     )?)
 }
 
 #[derive(Clone, Copy)]
-struct Vertex {
+struct VertexWText {
     position: [f32; 2],
     tex_coords: [f32; 2],
 }
-implement_vertex!(Vertex, position, tex_coords);
+implement_vertex!(VertexWText, position, tex_coords);
+
+#[derive(Clone, Copy)]
+struct VertexWColor {
+    position: [f32; 2],
+    color: [f32; 3],
+}
+implement_vertex!(VertexWColor, position, color);
 
 // pos starts from 0
-fn draw_piece(piece: Piece, pos: (u8, u8), display: &Display) {
-    const BOARD_PADDING: f32 = 0.03;
-    const SQUARE_OUTER_SIZE: f32 = 1f32 / 8f32;
-    const BORDER_THICNESS: f32 = 0.02;
+fn draw_piece(piece: Piece, pos: (u8, u8), display: &Display, target: &mut glium::Frame) {
+    const SQUARE_OUTER_SIZE: f32 = 2f32 / 8f32;
+    const BORDER_THICNESS: f32 = 0.002;
     const PADDING: f32 = 0.05;
     const SQUARE_INNER_SIZE: f32 = SQUARE_OUTER_SIZE - BORDER_THICNESS * 2f32 - PADDING * 2f32;
-    
-    // FIXME this does not consider the fact
-    // that coord system is from -1 to 1
+
+    const BORDER_COLOR: [f32; 3] = [239.0/255.0, 222.0/255.0, 205.0/255.0]; // brown
+    const WHITE_SQUARE_COLOR: [f32; 3] = [1.0, 1.0, 1.0];
+    const BLACK_SQUARE_COLOR: [f32; 3] = [0.0, 0.0, 0.0];
+
+    // let mut target = display.draw();
+    // target.clear_color(1.0, 0.0, 0.0, 0.0);
+    // target.finish().unwrap();
+
+    /*--------- SHADER FOR ONLY COLOR ---------*/
+    let shader = program!(display,
+    140 => {
+        vertex: "
+                #version 140
+                in vec2 position;
+                in vec3 color;
+                out vec3 v_color;
+
+                void main() {
+                    v_color = color;
+                    gl_Position = vec4(position, 0.0, 1.0);
+                }",
+        fragment: "
+                #version 140
+                in vec3 v_color;
+                out vec4 color;
+
+                void main() {
+                    color = vec4(v_color, 1.0);
+                }"
+    })
+    .unwrap();
+
+    /*======================== DRAW BORDER =======================================*/
     let top_left: (f32, f32) = (
-        pos.0 as f32 * SQUARE_OUTER_SIZE + BOARD_PADDING + BORDER_THICNESS + PADDING,
-        pos.1 as f32 * SQUARE_OUTER_SIZE + BOARD_PADDING + BORDER_THICNESS + PADDING,
+        -1f32 + pos.0 as f32 * SQUARE_OUTER_SIZE,
+        1f32 - pos.1 as f32 * SQUARE_OUTER_SIZE,
+    );
+    let vertex_buffer = VertexBuffer::new(
+        display,
+        &[
+            VertexWColor {
+                // top left
+                position: [top_left.0, top_left.1],
+                color: BORDER_COLOR,
+            },
+            VertexWColor {
+                // top right
+                position: [top_left.0 + SQUARE_OUTER_SIZE, top_left.1],
+                color: BORDER_COLOR,
+            },
+            VertexWColor {
+                // bottom left
+                position: [top_left.0, top_left.1 - SQUARE_OUTER_SIZE],
+                color: BORDER_COLOR,
+            },
+            VertexWColor {
+                // bottom right
+                position: [
+                    top_left.0 + SQUARE_OUTER_SIZE,
+                    top_left.1 - SQUARE_OUTER_SIZE,
+                ],
+                color: BORDER_COLOR,
+            },
+        ],
+    )
+    .unwrap();
+    let index_buffer = IndexBuffer::new(
+        display,
+        PrimitiveType::TrianglesList,
+        &[0, 1, 2, 2, 1, 3u16],
+    )
+    .unwrap();
+
+    target
+        .draw(
+            &vertex_buffer,
+            &index_buffer,
+            &shader,
+            &glium::uniforms::EmptyUniforms,
+            &Default::default(),
+        )
+        .unwrap();
+
+    /*======================== DRAW A PIECE =======================================*/
+    let top_left: (f32, f32) = (
+        -1f32 + pos.0 as f32 * SQUARE_OUTER_SIZE + BORDER_THICNESS + PADDING,
+        1f32 - pos.1 as f32 * SQUARE_OUTER_SIZE - BORDER_THICNESS - PADDING,
     );
 
-    // FIXME same problem as above
     let vb = VertexBuffer::new(
         display,
         &[
-            Vertex { // top left
+            VertexWText {
+                // top left
                 position: [top_left.0, top_left.1],
-                tex_coords: [-1.0, 1.0],
+                tex_coords: [0.0, 0.0],
             },
-            Vertex { // top right
+            VertexWText {
+                // top right
                 position: [top_left.0 + SQUARE_INNER_SIZE, top_left.1],
-                tex_coords: [1.0, 1.0],
+                tex_coords: [1.0, 0.0],
             },
-            Vertex { // bottom left
+            VertexWText {
+                // bottom left
+                position: [top_left.0, top_left.1 - SQUARE_INNER_SIZE],
+                tex_coords: [0.0, 1.0],
+            },
+            VertexWText {
+                // bottom right
                 position: [
-                    top_left.0,
+                    top_left.0 + SQUARE_INNER_SIZE,
                     top_left.1 - SQUARE_INNER_SIZE,
                 ],
-                tex_coords: [-1.0, -1.0],
-            },
-            Vertex { // bottom right
-                position: [top_left.0, top_left.1 - SQUARE_INNER_SIZE],
-                tex_coords: [1.0, -1.0],
+                tex_coords: [1.0, 1.0],
             },
         ],
-    ).unwrap();
+    )
+    .unwrap();
 
     let ib = IndexBuffer::new(
         display,
-        PrimitiveType::TriangleStrip,
-        &[1 as u16, 2, 0, 3],
-    ).unwrap();
+        PrimitiveType::TrianglesList,
+        &[0, 1, 2, 2, 1, 3u16],
+    )
+    .unwrap();
 
-    // TODO load textures depending on the piece
+    // TODO: load textures depending on the piece
     let texture = load_ogl_texture("src/assets/b_pawn_png_1024px.png", display).unwrap();
 
     let shader = program!(display,
@@ -340,24 +441,18 @@ fn draw_piece(piece: Piece, pos: (u8, u8), display: &Display) {
                 void main() {
                     color = texture(tex, v_tex_coords);
                 }"
-    }).unwrap();
+    })
+    .unwrap();
 
-    let draw = move || {
-        let mut target = display.draw();
-        target.clear_color(0.0, 0.0, 1.0, 1.0);
-        target
-            .draw(
-                &vb,
-                &ib,
-                &shader,
-                &glium::uniform! { tex: &texture },
-                &Default::default(),
-            )
-            .unwrap();
-        target.finish().unwrap();
-    };
-    
-    draw();
+    target
+        .draw(
+            &vb,
+            &ib,
+            &shader,
+            &glium::uniform! { tex: &texture },
+            &Default::default(),
+        )
+        .unwrap();
 }
 
 fn main() {
@@ -366,19 +461,29 @@ fn main() {
     let cb = glutin::ContextBuilder::new().with_vsync(true);
     let display = glium::Display::new(wb, cb, &ev).unwrap();
 
-
     ev.run(move |event, _, control_flow| {
-        *control_flow = glutin::event_loop::ControlFlow::Wait;
-        match event {
+        *control_flow = match event {
             glutin::event::Event::WindowEvent { event, .. } => match event {
-                glutin::event::WindowEvent::CloseRequested => {
-                    *control_flow = glutin::event_loop::ControlFlow::Exit
+                glutin::event::WindowEvent::CloseRequested => glutin::event_loop::ControlFlow::Poll,
+                glutin::event::WindowEvent::Resized(_) => {
+                    let mut target = display.draw();
+                    target.clear_color(0.0, 0.0, 1.0, 1.0);
+                    draw_piece(Piece::BKing, (7, 7), &display, &mut target);
+                    draw_piece(Piece::BKing, (0, 0), &display, &mut target);
+                    target.finish().unwrap();
+                    ControlFlow::Poll
                 }
-                glutin::event::WindowEvent::Resized(_) => draw_piece(Piece::BKing, (0,0), &display),
-                _ => (),
+                _ => ControlFlow::Poll,
             },
-            glutin::event::Event::RedrawRequested(_) => draw_piece(Piece::BKing, (0,0), &display),
-            _ => (),
+            glutin::event::Event::RedrawRequested(_) => {
+                    let mut target = display.draw();
+                    target.clear_color(0.0, 0.0, 1.0, 1.0);
+                    draw_piece(Piece::BKing, (7, 7), &display, &mut target);
+                    draw_piece(Piece::BKing, (0, 0), &display, &mut target);
+                    target.finish().unwrap();
+                ControlFlow::Poll
+            }
+            _ => ControlFlow::Poll,
         }
     });
 }
