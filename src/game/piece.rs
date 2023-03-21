@@ -1,3 +1,5 @@
+use glium::{Texture2d, Display};
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Piece {
     None = 0,
@@ -56,7 +58,20 @@ impl Piece {
         }
     }
 
-    pub fn as_usize(&self) -> usize {
-        *self as usize
+    pub fn get_texture(&self) -> Texture2d {
+        todo!()
     }
+}
+
+fn load_ogl_texture(
+    path: &str,
+    display: &Display,
+) -> Result<Texture2d, Box<dyn std::error::Error>> {
+    let image = image::open(path)?;
+    let image = image.to_rgba8();
+    let image_dimensions = image.dimensions();
+    Ok(glium::texture::Texture2d::new(
+        display,
+        glium::texture::RawImage2d::from_raw_rgba(image.into_raw(), image_dimensions),
+    )?)
 }

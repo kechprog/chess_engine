@@ -2,15 +2,16 @@
 
 /*
  * TODO:
- * MVP of the board
- * Heavy refactoring
- * function -> beautifull object
+ * Load correct sprite
  * board is a square not a rectangle, fix it
  */
 
-/*===============================================================*/
-/*==================== GAME RELATED STAFF =======================*/
-/*===============================================================*/
+/* PERFORMANCE:
+ *   1. don't read image in every loop
+ */
+
+use std::rc::Rc;
+
 use glium::glutin::{
     event::{Event, WindowEvent}, 
     self, event_loop::ControlFlow,
@@ -21,12 +22,11 @@ use game::board::Board;
 
 fn main() {
     let ev = glutin::event_loop::EventLoop::new();
-    let wb = glutin::window::WindowBuilder::new().with_title("textures");
+    let wb = glutin::window::WindowBuilder::new().with_title("chess");
     let cb = glutin::ContextBuilder::new().with_vsync(true);
-    let display = glium::Display::new(wb, cb, &ev).unwrap();
+    let display = Rc::new(glium::Display::new(wb, cb, &ev).unwrap());
 
     let mut board = Board::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR", display);
-
 
     ev.run(move |event, _, control_flow| {
         *control_flow = match event {
