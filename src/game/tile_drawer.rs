@@ -1,9 +1,10 @@
-use std::rc::Rc;
+use std::{collections::HashMap, rc::Rc};
 
 use glium::{
-    implement_vertex, index::PrimitiveType, program, uniform, Display, Frame, IndexBuffer, Program,
-    Surface, Texture2d, VertexBuffer,
+    glutin::dpi::Pixel, implement_vertex, index::PrimitiveType, program, uniform, Display, Frame,
+    IndexBuffer, Program, Surface, Texture2d, VertexBuffer,
 };
+use image::Rgba;
 
 use super::piece::Piece;
 
@@ -19,6 +20,7 @@ pub struct TileDrawer {
     shader: Program,
     display: Rc<Display>,
     idx_buffer: IndexBuffer<u16>,
+    textures: HashMap<Piece, Texture2d>,
 }
 
 macro_rules! rgba {
@@ -97,10 +99,12 @@ impl TileDrawer {
             shader,
             display,
             idx_buffer,
+            textures: HashMap::new(),
         }
     }
 
-    pub fn draw(&mut self, pos: (u8, u8), piece: &Piece, target: &mut Frame) {
+    pub fn draw(&mut self, pos: u8, piece: &Piece, target: &mut Frame) {
+        let pos = (pos % 8, pos / 8); // 0 - x, 1 - y (from left to right, from bottom to top)
         let bg_color = if (pos.0 + pos.1) % 2 == 0 {
             WHITE_SQUARE_COLOR
         } else {
@@ -111,10 +115,6 @@ impl TileDrawer {
             -1f32 + pos.0 as f32 * TILE_SIZE,
             1f32 - pos.1 as f32 * TILE_SIZE,
         );
-
-        // TODO: get right texture
-        // let texture = piece.get_texture(self.display);
-        let texture = load_ogl_texture("src/assets/b_pawn_png_1024px.png", &*self.display).unwrap();
 
         //----------------------------------- draw bg
         let vertex_buffer = VertexBuffer::new(
@@ -159,12 +159,19 @@ impl TileDrawer {
             .unwrap();
 
         //----------------------------------- draw piece
+        if *piece == Piece::None {
+            return;
+        }
+
+        let texture = self.textures
+            .entry(*piece)
+            .or_insert_with(|| piece.get_texture(&*self.display)) // make it laaaazy
+            as &Texture2d; // a dirty hack that compiler forces on me
+
         let piece_top_left = (
             tile_top_left.0 + TILE_PADDING,
             tile_top_left.1 - TILE_PADDING,
         );
-
-
 
         let vertex_buffer = VertexBuffer::new(
             &*self.display,
@@ -202,7 +209,7 @@ impl TileDrawer {
                 &vertex_buffer,
                 &self.idx_buffer,
                 &self.shader,
-                &uniform! {use_color: false, text: &texture},
+                &uniform! {use_color: false, text: texture},
                 &Default::default(),
             )
             .unwrap();

@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use crate::game::tile::TileDrawer;
+use crate::game::tile_drawer::TileDrawer;
 use glium::{
     implement_vertex, index::PrimitiveType, program, uniform, Display, IndexBuffer, Program,
     Surface, Texture2d, VertexBuffer,
@@ -10,7 +10,7 @@ use super::piece::Piece;
 
 
 pub struct Board {
-    board: [[Piece; 8]; 8],
+    board: [Piece; 64],
 
     /* STUFF FOR DRAWING */
     display: Rc<Display>,
@@ -19,12 +19,12 @@ pub struct Board {
 
 impl std::fmt::Debug for Board {
     fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for y in 0..8 {
-            print!("{}|", 8 - y);
-            for x in 0..8 {
-                print!("{}|", self.board[y][x].as_char());
+
+        for (idx, p) in self.board.iter().enumerate() {
+            print!("{}|", p.as_char());
+            if idx % 8 == 7 {
+                println!();
             }
-            println!();
         }
         Ok(())
     }
@@ -33,46 +33,34 @@ impl std::fmt::Debug for Board {
 
 impl Board {
     pub fn from_fen(fen_str: &str, display: Rc<Display>) -> Self {
-        let mut x = 0;
-        let mut y = 0;
-        let mut board = [[Piece::None; 8]; 8];
+        let mut idx = 0;
+        let mut board = [Piece::None; 64];
 
-        for c in fen_str.chars() {
-            if c == '/' {
-                y += 1;
-                x = 0;
+        for c in fen_str.chars().filter(|x| *x != '/') {
+            if c.is_digit(10) {
+                idx += c.to_digit(10).unwrap() as usize ;
                 continue;
             }
-
-            let piece = Piece::from_char(c);
-            board[y][x] = piece;
-
-            if piece != Piece::None {
-                x += 1;
-            } else {
-                x += c.to_digit(10).expect("Expected a valid fen str") as usize;
-            }
+            
+            board[idx] = Piece::from_char(c);
+            idx += 1;
         }
 
         let tile_drawer = TileDrawer::new(display.clone());
         Self {
-            board,
+            board, // 0 is a1
             display: display,
             tile_drawer,
         }
     }
 
-    fn draw_tile(&mut self, piece: Piece, pos: (u8, u8), target: &mut glium::Frame) {
-        self.tile_drawer.draw(pos, &piece, target);
-    }
-
+    // TODO: This is a temporary function to test drawing
     pub fn draw_position(&mut self) {
         let mut target = self.display.draw();
         target.clear_color(0.0, 0.0, 1.0, 1.0);
-        for i in 0..=7 {
-            for j in 0..=7 {
-                self.draw_tile(Piece::BKing, (i, j), &mut target);
-            }
+        for (idx, p) in self.board.iter().enumerate() {
+            let pos = (idx as u8 % 8, idx as u8 / 8);
+            self.tile_drawer.draw(idx as u8, p, &mut target);
         }
         target.finish().unwrap();
     }

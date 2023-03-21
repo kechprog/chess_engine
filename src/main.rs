@@ -2,7 +2,6 @@
 
 /*
  * TODO:
- * Load correct sprite
  * board is a square not a rectangle, fix it
  */
 
@@ -11,7 +10,6 @@
  */
 
 use std::rc::Rc;
-
 use glium::glutin::{
     event::{Event, WindowEvent}, 
     self, event_loop::ControlFlow,
