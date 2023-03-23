@@ -1,43 +1,64 @@
 #![allow(unused)]
-
 /*
  * TODO:
- * board is a square not a rectangle, fix it
+ * add game_state
+ * 
  */
 
-/* PERFORMANCE:
- *   1. don't read image in every loop
- */
 
 use std::rc::Rc;
+mod game;
+use game::{helpers::game_state::{GameState, Pov}, board_drawer::board::BoardDrawer};
 use glium::glutin::{
-    event::{Event, WindowEvent}, 
-    self, event_loop::ControlFlow,
+    event::{Event, WindowEvent, MouseButton, ElementState}, 
+    self, event_loop::ControlFlow, dpi::{Position, PhysicalPosition},
 };
 
-mod game;
-use game::board::Board;
 
 fn main() {
     let ev = glutin::event_loop::EventLoop::new();
     let wb = glutin::window::WindowBuilder::new().with_title("chess");
     let cb = glutin::ContextBuilder::new().with_vsync(true);
-    let display = Rc::new(glium::Display::new(wb, cb, &ev).unwrap());
+    let display = glium::Display::new(wb, cb, &ev).unwrap();
 
-    let mut board = Board::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR", display);
 
+    // init my things
+    let mut board_state = GameState::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR", Pov::White);
+    let mut board = BoardDrawer::new(display);
+    let mut current_pos = PhysicalPosition::new(0.0, 0.0);
+    
     ev.run(move |event, _, control_flow| {
         *control_flow = match event {
             glutin::event::Event::WindowEvent { event, .. } => match event {
                 glutin::event::WindowEvent::CloseRequested => glutin::event_loop::ControlFlow::Exit,
+                glutin::event::WindowEvent::CursorMoved{position, .. } => {
+                    current_pos = position;
+                    ControlFlow::Poll
+                },
+                glutin::event::WindowEvent::MouseInput {button, state, .. } => {
+                    if button == MouseButton::Left && state == ElementState::Released {
+                        match board.coord_to_tile(current_pos) {
+                            Some(tile) => {
+                                board_state.selected_tile = Some(tile);
+                                board.draw_position(&board_state);
+                            },
+                            None => {
+                                println!("outside board");
+                                board_state.selected_tile = None;
+                                board.draw_position(&board_state);
+                            },
+                        }
+                    }
+                    ControlFlow::Poll
+                },
                 glutin::event::WindowEvent::Resized(_) => {
-                    board.draw_position();
+                    board.draw_position(&board_state);
                     ControlFlow::Poll
                 }
                 _ => ControlFlow::Poll,
             },
             glutin::event::Event::RedrawRequested(_) => {
-                board.draw_position();
+                board.draw_position(&board_state);
                 ControlFlow::Poll
             }
             _ => ControlFlow::Poll,

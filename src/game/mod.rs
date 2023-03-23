@@ -1,3 +1,2 @@
-pub mod piece;
-pub mod board;
-pub mod tile_drawer;
+pub mod board_drawer;
+pub mod helpers;
