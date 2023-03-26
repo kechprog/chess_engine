@@ -34,10 +34,10 @@ macro_rules! rgba {
     };
 }
 
-
 const TILE_PADDING_FRACTION: f32 = 0.15;
 const WHITE_SQUARE_COLOR: [f32; 4] = rgba![202, 211, 245, 255];
 const BLACK_SQUARE_COLOR: [f32; 4] = rgba![24, 25, 38, 255];
+const SELECTED_SQUARE_COLOR: [f32; 4] = rgba![238, 212, 159, 255];
 
 impl TileDrawer {
     pub fn new(display: Rc<Display>) -> Self {
@@ -89,23 +89,36 @@ impl TileDrawer {
         }
     }
 
-    pub fn draw(&mut self, pos: usize, piece: Piece, board_dimensions: (f32, f32), target: &mut Frame) {     
-        let pos = (pos % 8, pos / 8); // 0 - x, 1 - y (from left to right, from bottom to top)
-        let bg_color = if (pos.0 + pos.1) % 2 == 0 {
-            WHITE_SQUARE_COLOR
+    // idx is wrong
+    // xz why
+    pub fn draw(
+        &mut self,
+        pos: usize, // 0 - a1 63 - h8
+        piece: Piece,
+        board_dimensions: (f32, f32),
+        selected: bool,
+        target: &mut Frame,
+    ) {
+        let pos = (
+            pos % 8,
+            7 - pos / 8 
+        );
+        let bg_color = if selected {
+            SELECTED_SQUARE_COLOR
         } else {
-            BLACK_SQUARE_COLOR
+            if (pos.0 + pos.1) % 2 == 0 {
+                WHITE_SQUARE_COLOR
+            } else {
+                BLACK_SQUARE_COLOR
+            }
         };
 
         let tile_w = board_dimensions.0 / 8.0;
-        let tile_h = board_dimensions.1 / 8.0 ;
+        let tile_h = board_dimensions.1 / 8.0;
         let piece_h = tile_h * (1.0 - 2.0 * TILE_PADDING_FRACTION);
         let piece_w = tile_w * (1.0 - 2.0 * TILE_PADDING_FRACTION);
 
-        let tile_top_left = (
-            -1f32 + pos.0 as f32 * tile_w,
-            1f32 - pos.1 as f32 * tile_h,
-        );
+        let tile_top_left = (-1f32 + pos.0 as f32 * tile_w, 1f32 - pos.1 as f32 * tile_h);
 
         //----------------------------------- draw bg
         let vertex_buffer = VertexBuffer::new(

@@ -1,17 +1,16 @@
-use super::piece::Piece;
+use super::{piece::{Piece, self}, game_state::GameState};
 
-pub fn position_from_fen(fen_str: &str) -> [Piece; 64] {
-    let mut idx = 0;
-    let mut board = [Piece::None; 64];
 
-    for c in fen_str.chars().filter(|x| *x != '/') {
-        if c.is_digit(10) {
-            idx += c.to_digit(10).unwrap() as usize;
-            continue;
-        }
-        board[idx] = Piece::from_char(c);
-        idx += 1;
-    }
+// gets legal move for a selected piece
+// returns None if the piece is not selected or if there is no legal moves
+// pub fn get_legal_moves(state: &GameState) -> Option<Vec<u8>> {
+//     let sel_piece = if let Some(idx) = state.selected_tile {
+//         state.position[idx]
+//     } else {
+//         return None;
+//     };
 
-    return board;
-}
+
+
+//     Some(vec![])
+// }

@@ -1,4 +1,4 @@
-use glium::{implement_vertex, program, uniform, Display, Frame, Surface, VertexBuffer};
+use glium::{implement_vertex, program, uniform, Display, Frame, Surface, VertexBuffer, DrawParameters};
 use std::rc::Rc;
 
 #[derive(Copy, Clone)]
@@ -43,7 +43,7 @@ impl DotDrawer {
                 out vec4 color;
                 uniform sampler2D tex;
                 void main() {
-                    color = texture(tex, v_tex_coords);
+                    color = texture(tex, v_tex_coords) - vec4(0.0, 0.0, 0.0, 0.5);
                 }
             ",
         })
@@ -64,7 +64,8 @@ impl DotDrawer {
 
     const DOT_PADDING_FRACTION: f32 = 0.1;
     pub fn dot_at(&self, idx: usize, board_dimensions: (f32, f32), target: &mut Frame) {
-        let pos = (idx % 8, idx / 8);
+        // let pos = (idx % 8, idx / 8);
+        let pos = (idx % 8, 7 - idx / 8);
 
         let tile_w = board_dimensions.0 / 8.0;
         let tile_h = board_dimensions.1 / 8.0;
@@ -111,7 +112,10 @@ impl DotDrawer {
             &self.index_buffer,
             &self.shader,
             &uniforms,
-            &Default::default(),
+            &DrawParameters{
+                blend: glium::Blend::alpha_blending(),
+                ..Default::default()
+            }
         );
     }
 }

@@ -83,4 +83,26 @@ impl Piece {
             glium::texture::RawImage2d::from_raw_rgba(img.into_raw(), img_dimensions),
         ).expect("pc is burning")
     }
+
+    // true = white, false = black
+    pub fn color(&self) -> Color {
+        match self {
+            Piece::WPawn | Piece::WKnight | Piece::WBishop | Piece::WRook | Piece::WQueen | Piece::WKing => Color::White,
+            Piece::BPawn | Piece::BKnight | Piece::BBishop | Piece::BRook | Piece::BQueen | Piece::BKing => Color::Black,
+            Piece::None => unreachable!("this should never happen"),
+        }
+    }
+
+    pub fn is(&self, color: Color) -> bool {
+        match color {
+            Color::White => self.color() == Color::White,
+            Color::Black => self.color() == Color::Black,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Color {
+    White,
+    Black,
 }

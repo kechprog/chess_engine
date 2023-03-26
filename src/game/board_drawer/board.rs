@@ -1,5 +1,8 @@
 use super::{dot_drawer::DotDrawer, tile_drawer::TileDrawer};
-use crate::game::helpers::game_state::{GameState, Pov};
+use crate::game::helpers::{
+    game_state::{GameState, Pov},
+    piece::Piece,
+};
 use glium::{glutin::dpi::PhysicalPosition, Display, Surface};
 use std::rc::Rc;
 
@@ -32,7 +35,6 @@ impl BoardDrawer {
         }
     }
 
-
     pub fn draw_position(&mut self, state: &GameState) {
         let mut target = self.display.draw();
         target.clear_color(0.0, 0.0, 1.0, 1.0);
@@ -41,24 +43,65 @@ impl BoardDrawer {
 
         // draw tiles
         match state.pov {
-            Pov::White => state.position.iter().enumerate().for_each(|(idx, p)| {
-                self.tile_drawer
-                    .draw(idx as usize, *p, self.board_dimensions, &mut target)
-            }),
+            Pov::White => state
+                .position
+                .board
+                .iter()
+                .enumerate()
+                .for_each(|(idx, p)| {
+                    self.tile_drawer.draw(
+                        idx as usize,
+                        *p,
+                        self.board_dimensions,
+                        false,
+                        &mut target,
+                    )
+                }),
 
-            Pov::Black => state.position.iter().enumerate().for_each(|(idx, p)| {
-                self.tile_drawer
-                    .draw(63 - idx as usize, *p, self.board_dimensions, &mut target)
-            }),
+            Pov::Black => state
+                .position
+                .board
+                .iter()
+                .enumerate()
+                .for_each(|(idx, p)| {
+                    self.tile_drawer.draw(
+                        63 - idx as usize,
+                        *p,
+                        self.board_dimensions,
+                        false,
+                        &mut target,
+                    )
+                }),
         }
-        // draw test circle
-        if let Some(clicked_tile) = state.selected_tile {
-            self.dot_drawer
-                .dot_at(clicked_tile, self.board_dimensions, &mut target);
+
+        // draw selected piece
+        if let Some(selected_tile) = state.selected_tile {
+            if state.position.board[selected_tile] != Piece::None {
+                self.tile_drawer.draw(
+                    selected_tile,
+                    state.position.board[selected_tile],
+                    self.board_dimensions,
+                    true,
+                    &mut target,
+                );
+            }
         }
+
+        // TODO: FIX AFTER NORMAL INDEXING
+        // draw dots(legal moves)
+        if let Some(selected_tile) = state.selected_tile {
+            state
+                .position
+                .get_legal_moves(selected_tile)
+                .iter()
+                .for_each(|&idx| {
+                    self.dot_drawer
+                        .dot_at(idx as usize, self.board_dimensions, &mut target)
+                });
+        }
+
         target.finish().unwrap();
     }
-
 
     // returns none if the click was outside the board
     pub fn coord_to_tile(&mut self, coords: PhysicalPosition<f64>) -> Option<usize> {
@@ -78,6 +121,8 @@ impl BoardDrawer {
             return None;
         }
 
-        Some(tile_x + tile_y * 8)
+        let tile_from_bottom = 7 - tile_y;
+
+        Some(tile_from_bottom * 8 + tile_x)
     }
 }

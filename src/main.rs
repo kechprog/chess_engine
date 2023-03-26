@@ -6,7 +6,7 @@
  */
 
 
-use std::rc::Rc;
+use std::{rc::Rc, env::args};
 mod game;
 use game::{helpers::game_state::{GameState, Pov}, board_drawer::board::BoardDrawer};
 use glium::glutin::{
@@ -23,8 +23,9 @@ fn main() {
 
 
     // init my things
-    let mut board_state = GameState::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR", Pov::White);
-    let mut board = BoardDrawer::new(display);
+    let fen = args().nth(1).unwrap_or("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR".to_string());
+    let mut game_state = GameState::from_fen(fen.as_str(), Pov::White);
+    let mut board_drawer = BoardDrawer::new(display);
     let mut current_pos = PhysicalPosition::new(0.0, 0.0);
     
     ev.run(move |event, _, control_flow| {
@@ -37,28 +38,29 @@ fn main() {
                 },
                 glutin::event::WindowEvent::MouseInput {button, state, .. } => {
                     if button == MouseButton::Left && state == ElementState::Released {
-                        match board.coord_to_tile(current_pos) {
+                        match board_drawer.coord_to_tile(current_pos) {
                             Some(tile) => {
-                                board_state.selected_tile = Some(tile);
-                                board.draw_position(&board_state);
+                                game_state.selected_tile = Some(tile);
+                                board_drawer.draw_position(&game_state);
+                                println!("tile: {:?}", tile)
                             },
                             None => {
                                 println!("outside board");
-                                board_state.selected_tile = None;
-                                board.draw_position(&board_state);
+                                game_state.selected_tile = None;
+                                board_drawer.draw_position(&game_state);
                             },
                         }
                     }
                     ControlFlow::Poll
                 },
                 glutin::event::WindowEvent::Resized(_) => {
-                    board.draw_position(&board_state);
+                    board_drawer.draw_position(&game_state);
                     ControlFlow::Poll
                 }
                 _ => ControlFlow::Poll,
             },
             glutin::event::Event::RedrawRequested(_) => {
-                board.draw_position(&board_state);
+                board_drawer.draw_position(&game_state);
                 ControlFlow::Poll
             }
             _ => ControlFlow::Poll,
