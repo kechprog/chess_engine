@@ -6,7 +6,7 @@ use glium::{
 };
 use image::Rgba;
 
-use crate::game::helpers::piece::Piece;
+use crate::game::helpers::piece::{Piece, Type};
 
 #[derive(Clone, Copy)]
 struct Vertex {
@@ -163,7 +163,7 @@ impl TileDrawer {
             .unwrap();
 
         //----------------------------------- draw piece
-        if piece == Piece::None {
+        if piece.piece_type == Type::None {
             return;
         }
 

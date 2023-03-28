@@ -1,4 +1,4 @@
-use crate::game::helpers::piece::{Color, Piece};
+use crate::game::helpers::piece::{Color, Piece, Type};
 
 pub struct Position {
     pub board: [Piece; 64],
@@ -7,7 +7,7 @@ pub struct Position {
 impl Position {
     pub fn from_fen(fen_str: &str) -> Position {
         let mut idx = 0;
-        let mut board = [Piece::None; 64];
+        let mut board = [Piece::default(); 64];
 
         for c in fen_str.chars().filter(|x| *x != '/') {
             if c.is_digit(10) {
@@ -22,231 +22,29 @@ impl Position {
         Self { board }
     }
 
-    /// returns a idx of all tiles on diagonals           
-    pub fn diagonals(&self, idx: usize) -> Vec<u8> {
-        self.board
-            .iter()
-            .enumerate()
-            .map(|(p_idx, p)| {
-                p_idx != idx
-                    && ((p_idx as i64 % 8 - idx as i64 % 8).abs()
-                        == (p_idx as i64 / 8 - idx as i64 / 8).abs())
-            })
-            .enumerate()
-            .filter(|(p_idx, p)| *p)
-            .map(|(p_idx, p)| p_idx as u8)
-            .collect()
-    }
-
-    /// returns a idx of all tiles on lines
-    pub fn lines(&self, idx: usize) -> Vec<u8> {
-        self.board
-            .iter()
-            .enumerate()
-            .map(|(p_idx, p)| p_idx != idx && ((p_idx % 8 == idx % 8) || (p_idx / 8 == idx / 8)))
-            .enumerate()
-            .filter(|(p_idx, p)| *p)
-            .map(|(p_idx, p)| p_idx as u8)
-            .collect()
-    }
-
-    /// returns a idx of all tiles on lines and diagonals, basically
-    /// all queen moves no matter the possiblity of a piece being in the way
-    pub fn lines_n_diagonals(&self, idx: usize) -> Vec<u8> {
-        self.board
-            .iter()
-            .enumerate()
-            .map(|(p_idx, p)| {
-                p_idx != idx
-                    && ((p_idx % 8 == idx % 8)
-                        || (p_idx / 8 == idx / 8)
-                        || ((p_idx as i64 % 8 - idx as i64 % 8).abs()
-                            == (p_idx as i64 / 8 - idx as i64 / 8).abs()))
-            })
-            .enumerate()
-            .filter(|(p_idx, p)| *p)
-            .map(|(p_idx, p)| p_idx as u8)
-            .collect()
-    }
-
-    // TODO: make it more consise
-    /// basically all legal moves for bishop
-    pub fn diagonals_till_collision(&self, idx: usize, include_friendly: bool) -> Vec<u8> {
-        // ne 
-        let mut moves = vec![0;0];
-        let mut p_idx = idx;
-        while p_idx % 8 != 7 && p_idx / 8 != 7 {
-            p_idx += 9;
-            match self.board[p_idx] {
-                Piece::None => moves.push(p_idx as u8),
-                p if p.color() != self.board[idx].color() => {
-                    moves.push(p_idx as u8);
-                    break
-                },
-                p if include_friendly && p.color() == self.board[idx].color() => {
-                    moves.push(p_idx as u8);
-                    break
-                },
-                _ => break
-            }
-        }
-
-        // nw
-        p_idx = idx;
-        while p_idx % 8 != 0 && p_idx / 8 != 7 {
-            p_idx += 7;
-            match self.board[p_idx] {
-                Piece::None => moves.push(p_idx as u8),
-                p if p.color() != self.board[idx].color() => {
-                    moves.push(p_idx as u8);
-                    break
-                },
-                p if include_friendly && p.color() == self.board[idx].color() => {
-                    moves.push(p_idx as u8);
-                    break
-                },
-                _ => break
-            }
-        }
-
-        // se
-        p_idx = idx;
-        while p_idx % 8 != 7 && p_idx / 8 != 0 {
-            p_idx -= 7;
-            match self.board[p_idx] {
-                Piece::None => moves.push(p_idx as u8),
-                p if p.color() != self.board[idx].color() => {
-                    moves.push(p_idx as u8);
-                    break
-                },
-                p if include_friendly && p.color() == self.board[idx].color() => {
-                    moves.push(p_idx as u8);
-                    break
-                },
-                _ => break
-            }
-        }
-
-        // sw
-        p_idx = idx;
-        while p_idx % 8 != 0 && p_idx / 8 != 0 {
-            p_idx -= 9;
-            match self.board[p_idx] {
-                Piece::None => moves.push(p_idx as u8),
-                p if p.color() != self.board[idx].color() => {
-                    moves.push(p_idx as u8);
-                    break
-                },
-                p if include_friendly && p.color() == self.board[idx].color() => {
-                    moves.push(p_idx as u8);
-                    break
-                },
-                _ => break
-            }
-        }
-
-        moves
-    }
-
-    /// basically all legal moves for rook
-    pub fn lines_till_collision(&self, idx: usize, include_friendly: bool) -> Vec<u8> {
-        // n
-        let mut moves = vec![0;0];
-        let mut p_idx = idx;
-        while p_idx / 8 != 7 {
-            p_idx += 8;
-            match self.board[p_idx] {
-                Piece::None => moves.push(p_idx as u8),
-                p if p.color() != self.board[idx].color() => {
-                    moves.push(p_idx as u8);
-                    break
-                },
-                p if include_friendly && p.color() == self.board[idx].color() => {
-                    moves.push(p_idx as u8);
-                    break
-                },
-                _ => break
-            }
-        }
-
-        // s
-        p_idx = idx;
-        while p_idx / 8 != 0 {
-            p_idx -= 8;
-            match self.board[p_idx] {
-                Piece::None => moves.push(p_idx as u8),
-                p if p.color() != self.board[idx].color() => {
-                    moves.push(p_idx as u8);
-                    break
-                },
-                p if include_friendly && p.color() == self.board[idx].color() => {
-                    moves.push(p_idx as u8);
-                    break
-                },
-                _ => break
-            }
-        }
-
-        // e
-        p_idx = idx;
-        while p_idx % 8 != 7 {
-            p_idx += 1;
-            match self.board[p_idx] {
-                Piece::None => moves.push(p_idx as u8),
-                p if p.color() != self.board[idx].color() => {
-                    moves.push(p_idx as u8);
-                    break
-                },
-                p if include_friendly && p.color() == self.board[idx].color() => {
-                    moves.push(p_idx as u8);
-                    break
-                },
-                _ => break
-            }
-        }
-
-        // w
-        p_idx = idx;
-        while p_idx % 8 != 0 {
-            p_idx -= 1;
-            match self.board[p_idx] {
-                Piece::None => moves.push(p_idx as u8),
-                p if p.color() != self.board[idx].color() => {
-                    moves.push(p_idx as u8);
-                    break
-                },
-                p if include_friendly || p.color() == self.board[idx].color() => {
-                    moves.push(p_idx as u8);
-                    break
-                },
-                _ => break
-            }
-        }
-
-        moves
-    }
-
     /// returns true if there is a piece which can pin
     /// between the king and the piece at p_idx
-    pub fn is_pinned(&self, p_idx: usize) -> bool {
+    pub fn diagonal_pin(&self, p_idx: usize) -> bool {
         let king_color = self.board[p_idx].color();
-        let king_idx = self.board.iter().position(|p| p == match king_color {
-            Color::White => &Piece::WKing,
-            Color::Black => &Piece::BKing
-        }).unwrap();
-        
+        let king_idx = self
+            .board
+            .iter()
+            .position(|p| {
+                *p == Piece {color: king_color, piece_type: Type::King}
+            })
+            .unwrap();
+
         // check if king is pinned on the diagonals
-        let diagonals = self.diagonals_till_collision(p_idx, true);
-        let diag_pin = diagonals.contains(&(king_idx as u8)) && {
-            let e_queen = match king_color {
-                Color::White => Piece::BQueen,
-                Color::Black => Piece::WQueen
+        let diagonals = self.bishop_moves(p_idx, true);
+        let diagonal_pin = diagonals.contains(&(king_idx as u8)) && {
+            let e_queen = Piece { 
+                color: self.board[p_idx].color.opposite() , 
+                piece_type: Type::Queen 
             };
-            let e_bishop = match king_color {
-                Color::White => Piece::BBishop,
-                Color::Black => Piece::WBishop
+            let e_bishop = Piece { 
+                color: self.board[p_idx].color.opposite(), 
+                piece_type: Type::Bishop 
             };
-            
 
             let can_pin = |e_piece, e_idx| {
                 if e_piece != e_queen && e_piece != e_bishop {
@@ -262,18 +60,29 @@ impl Position {
             })
         };
 
-        // check if king is pinned on the lines
-        let lines = self.lines_till_collision(p_idx, true);
+        diagonal_pin
+    }
+
+    pub fn line_pin(&self, p_idx: usize) -> bool {
+        let king_color = self.board[p_idx].color();
+        let king_idx = self
+            .board
+            .iter()
+            .position(|p| {
+                *p == Piece {color: king_color, piece_type: Type::King} 
+            })
+            .unwrap();
+
+        let lines = self.rook_moves(p_idx, true);
         let line_pin = lines.contains(&(king_idx as u8)) && {
-            let e_queen = match king_color {
-                Color::White => Piece::BQueen,
-                Color::Black => Piece::WQueen
+            let e_queen = Piece { 
+                color: self.board[p_idx].color.opposite(), 
+                piece_type: Type::Queen
             };
-            let e_rook = match king_color {
-                Color::White => Piece::BRook,
-                Color::Black => Piece::WRook
+            let e_rook = Piece { 
+                color: self.board[p_idx].color.opposite(), 
+                piece_type: Type::Rook 
             };
-            
 
             let can_pin = |e_piece, e_idx| {
                 if e_piece != e_queen && e_piece != e_rook {
@@ -289,15 +98,18 @@ impl Position {
             })
         };
 
-        diag_pin || line_pin
+        line_pin
     }
 
-    pub fn get_legal_moves(&self, idx: usize) -> Vec<u8> {
-        let sel_piece = self.board[idx];
-        if (sel_piece == Piece::None) || self.is_pinned(idx) {
-            return vec![0; 0];
+    pub fn legal_moves(&self, idx: usize) -> Vec<u8> {
+        match self.board[idx] {
+            Piece { piece_type: Type::Pawn,   ..} => self.pawn_moves(idx),
+            Piece { piece_type: Type::Rook,   ..} => self.rook_moves(idx, false),
+            Piece { piece_type: Type::Knight, ..} => self.knight_moves(idx),
+            Piece { piece_type: Type::Bishop, ..} => self.bishop_moves(idx, false),
+            Piece { piece_type: Type::Queen,  ..} => self.queen_moves(idx),
+            Piece { piece_type: Type::King,   ..} => self.king_moves(idx),
+            Piece { piece_type: Type::None,   ..} => vec![],
         }
-
-        self.diagonals_till_collision(idx, false)
     }
 }

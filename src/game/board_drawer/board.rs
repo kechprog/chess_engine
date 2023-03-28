@@ -1,7 +1,7 @@
 use super::{dot_drawer::DotDrawer, tile_drawer::TileDrawer};
 use crate::game::helpers::{
     game_state::{GameState, Pov},
-    piece::Piece,
+    piece::{Piece, Type},
 };
 use glium::{glutin::dpi::PhysicalPosition, Display, Surface};
 use std::rc::Rc;
@@ -76,7 +76,7 @@ impl BoardDrawer {
 
         // draw selected piece
         if let Some(selected_tile) = state.selected_tile {
-            if state.position.board[selected_tile] != Piece::None {
+            if state.position.board[selected_tile].piece_type != Type::None {
                 self.tile_drawer.draw(
                     selected_tile,
                     state.position.board[selected_tile],
@@ -92,7 +92,7 @@ impl BoardDrawer {
         if let Some(selected_tile) = state.selected_tile {
             state
                 .position
-                .get_legal_moves(selected_tile)
+                .legal_moves(selected_tile)
                 .iter()
                 .for_each(|&idx| {
                     self.dot_drawer
