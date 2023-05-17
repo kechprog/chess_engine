@@ -40,29 +40,31 @@ impl BoardDrawer {
 
         // draw tiles
         match pov {
-            Color::White => position.position.iter().enumerate().for_each(|(idx, p)| {
-                self.tile_drawer
-                    .draw(idx as usize, *p, self.board_dimensions, false, &mut target)
-            }),
+            Color::White => position.position.
+                iter().enumerate().for_each(|(idx, p)| {
+                    self.tile_drawer
+                        .draw(idx as usize, *p, self.board_dimensions, false, &mut target)
+                }),
 
             // needs to be reversed
-            Color::Black => position.position.iter().enumerate().for_each(|(idx, p)| {
-                self.tile_drawer.draw(
-                    idx as usize,
-                    *p,
-                    self.board_dimensions,
-                    false,
-                    &mut target,
-                )
-            }),
+            Color::Black => position.position
+                .iter().rev().enumerate().for_each(|(idx, p)| {
+                    self.tile_drawer
+                        .draw(idx as usize, *p, self.board_dimensions, false, &mut target)
+                }),
         }
 
         // draw selected piece
         if let Some(selected_tile) = selected_tile {
             if position.position[selected_tile as usize].piece_type != Type::None {
+                let piece = position.position[selected_tile as usize];
+                let tile  = match pov {
+                    Color::White => selected_tile as usize,
+                    Color::Black => 63 - selected_tile as usize,
+                };
                 self.tile_drawer.draw(
-                    selected_tile as usize,
-                    position.position[selected_tile as usize],
+                    tile,
+                    piece,
                     self.board_dimensions,
                     true,
                     &mut target,
@@ -70,23 +72,30 @@ impl BoardDrawer {
             }
         }
 
-        // TODO: FIX AFTER NORMAL INDEXING
-        // draw dots(legal moves)
+        // draw dots 
         if let Some(selected_tile) = selected_tile {
-            position
-                .legal_moves(selected_tile as usize)
-                .iter()
-                .for_each(|_move| {
-                    self.dot_drawer
-                        .dot_at(_move._to(), self.board_dimensions, &mut target)
-                });
+            let legal_moves = position.legal_moves(selected_tile as usize);
+            match pov{
+                Color::White => {
+                    legal_moves.iter().for_each(|_move| {
+                        self.dot_drawer
+                            .dot_at(_move._to(), self.board_dimensions, &mut target)
+                    });
+                }
+                Color::Black => {
+                    legal_moves.iter().for_each(|_move| {
+                        self.dot_drawer
+                            .dot_at(63 - _move._to(), self.board_dimensions, &mut target)
+                    });
+                }
+            }
         }
 
         target.finish().unwrap();
     }
 
     // returns none if the click was outside the board
-    pub fn coord_to_tile(&mut self, coords: PhysicalPosition<f64>) -> Option<u8> {
+    pub fn coord_to_tile(&mut self, coords: PhysicalPosition<f64>, pov: Color) -> Option<u8> {
         self.update_board_dimensions();
         let (x, y) = (
             (coords.x / self.display.gl_window().window().inner_size().width as f64) * 2.0,
@@ -105,6 +114,14 @@ impl BoardDrawer {
 
         let tile_from_bottom = 7 - tile_y;
 
-        Some((tile_from_bottom * 8 + tile_x) as u8)
+        let sel_tile = (tile_from_bottom * 8 + tile_x);
+        let sel_tile = if pov == Color::Black {
+            63 - sel_tile
+        } else {
+            sel_tile
+        };
+
+        dbg!(sel_tile);
+        Some(sel_tile as u8)
     }
 }

@@ -17,7 +17,7 @@ pub struct TwoPlayerAgent {
     position: Position,
     board_drawer: BoardDrawer,
 
-    pov: Color,
+    turn: Color,
     mouse_pos: PhysicalPosition<f64>,
     selected_tile: Option<u8>,
 }
@@ -28,18 +28,18 @@ impl TwoPlayerAgent {
     // TODO: FIXME
     fn mouse_click(&mut self, pos: PhysicalPosition<f64>) {
 
-        let clicked_tile = if self.board_drawer.coord_to_tile(pos).is_none() {
+        let clicked_tile = if self.board_drawer.coord_to_tile(pos, self.turn).is_none() {
             self.selected_tile = None;
             self.board_drawer
-                .draw_position(&self.position, self.selected_tile, self.pov);
+                .draw_position(&self.position, self.selected_tile, self.turn);
             return;
         } else if self.selected_tile.is_none() {
-            self.selected_tile = self.board_drawer.coord_to_tile(pos);
+            self.selected_tile = self.board_drawer.coord_to_tile(pos, self.turn);
             self.board_drawer
-                .draw_position(&self.position, self.selected_tile, self.pov);
+                .draw_position(&self.position, self.selected_tile, self.turn);
             return;
         } else {
-            self.board_drawer.coord_to_tile(pos).unwrap()
+            self.board_drawer.coord_to_tile(pos, self.turn).unwrap()
         };
         let selected_tile = self.selected_tile.unwrap();
 
@@ -49,13 +49,13 @@ impl TwoPlayerAgent {
             .iter()
             .position(|m| m._to() == clicked_tile as usize && m._from() == selected_tile as usize) {
             Some(i) => {
-                dbg!(legal_moves[i]._from(), legal_moves[i]._to(), legal_moves[i].move_type());
+                dbg!();
                 self.position.mk_move(legal_moves[i]);
                 self.selected_tile = None;
                 
-                self.pov = self.pov.opposite();
+                self.turn = self.turn.opposite();
                 self.board_drawer
-                    .draw_position(&self.position, self.selected_tile, self.pov);
+                    .draw_position(&self.position, self.selected_tile, self.turn);
             }
             None => {
                 self.selected_tile = Some(clicked_tile);
@@ -65,7 +65,7 @@ impl TwoPlayerAgent {
 
         // redraw the staff
         self.board_drawer
-            .draw_position(&self.position, self.selected_tile, self.pov);
+            .draw_position(&self.position, self.selected_tile, self.turn);
     }
 
     fn mouse_moved(&mut self, pos: PhysicalPosition<f64>) {
@@ -80,7 +80,7 @@ impl Agent for TwoPlayerAgent {
             position: Position::default(),
             board_drawer: BoardDrawer::new(display),
             mouse_pos: PhysicalPosition::new(0.0, 0.0),
-            pov: Color::White,
+            turn: Color::White,
             selected_tile: None,
         }
     }
@@ -103,14 +103,14 @@ impl Agent for TwoPlayerAgent {
 
                 WindowEvent::Resized(_) => {
                     self.board_drawer
-                        .draw_position(&self.position, self.selected_tile, self.pov);
+                        .draw_position(&self.position, self.selected_tile, self.turn);
                     ControlFlow::Poll
                 }
                 _ => ControlFlow::Poll,
             },
             Event::RedrawRequested(_) => {
                 self.board_drawer
-                    .draw_position(&self.position, self.selected_tile, self.pov);
+                    .draw_position(&self.position, self.selected_tile, self.turn);
                 ControlFlow::Poll
             }
             _ => ControlFlow::Poll,
