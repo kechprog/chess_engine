@@ -1,4 +1,4 @@
-use crate::game_repr::{MoveType, Move};
+use crate::game_repr::{MoveType, Move, Color};
 
 use super::super::{
     piece::{Piece, Type},
@@ -26,5 +26,10 @@ impl Position {
         ))
         .map(move |&x| Move::new(idx as u8, x as u8, MoveType::Normal))
         .collect()
+    }
+
+    // True - long, False - short
+    fn can_castle(self, kcolor: Color, direction: bool) -> bool {
+        todo!("It is hard!")
     }
 }

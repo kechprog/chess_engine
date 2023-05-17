@@ -52,8 +52,11 @@ impl Position {
         // on passant
         let prev_to = self.prev_moves
             .last().unwrap()._to();
+        let prev_move = self.prev_moves
+            .last().unwrap();
         if self.position[prev_to].color != piece.color
         && self.position[prev_to].piece_type == Type::Pawn
+        && ((prev_move._from() as i64 - prev_move._to() as i64).abs() == 16 )
         {
             if prev_to + 1 == idx as usize {
                 moves.push(Move::new(idx as u8, match piece.color {

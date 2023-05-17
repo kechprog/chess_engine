@@ -75,6 +75,7 @@ impl TwoPlayerAgent {
 
 impl Agent for TwoPlayerAgent {
     fn new(display: Display) -> Self {
+        dbg!(Position::default().position);
         TwoPlayerAgent {
             position: Position::default(),
             board_drawer: BoardDrawer::new(display),

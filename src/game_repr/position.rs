@@ -9,6 +9,11 @@ use super::*;
 pub struct Position {
     pub position: [Piece; 64],
     pub prev_moves: Vec<Move>,
+    /// 3 bits for each side
+    /// TRUE - has not moved
+    /// KingRook, QueenRook, King - white  |  R  |  K  |  Q  | R
+    /// KingRook, QueenRook, King - black  |  R  |  Q  |  K  | R
+    pub castling_cond: [bool; 6],
 }
 
 impl Default for Position {
@@ -18,23 +23,31 @@ impl Default for Position {
 }
 
 impl Position {
+
+    // TODO add notaion for castling
     pub fn from_fen(fen_str: &str) -> Position {
-        let mut idx = 0;
+        let mut idx: usize = 56;
         let mut board = [Piece::default(); 64];
 
-        for c in fen_str.chars().filter(|x| *x != '/') {
-            if c.is_digit(10) {
-                idx += c.to_digit(10).unwrap() as usize;
-                continue;
+        for c in fen_str.chars() {
+            match c {
+                '/' => {
+                    idx = idx - 16;
+                }
+                '1'..='8' => {
+                    idx += c.to_digit(10).unwrap() as usize;
+                }
+                _ => {
+                    board[idx] = Piece::from_char(c);
+                    idx += 1;
+                }
             }
-            board[idx] = Piece::from_char(c);
-            idx += 1;
         }
 
-        board.reverse();
-        Self { 
+        Self {
             position: board,
-            prev_moves: vec![] 
+            prev_moves: Vec::new(),
+            castling_cond: [true; 6],
         }
     }
 
@@ -54,7 +67,18 @@ impl Position {
                 self.position[_move._from() as usize] = Piece::default();
             },
             MoveType::EnPassant => {
-                panic!("I'm to lazy to implement it")
+                match self.position[_move._from()].color{
+                    Color::White => {
+                        self.position[_move._to() - 8] = Piece::default();
+                        self.position[_move._to()] = self.position[_move._from() as usize];
+                        self.position[_move._from() as usize] = Piece::default();
+                    },
+                    Color::Black => {
+                        self.position[_move._to() + 8] = Piece::default();
+                        self.position[_move._to()] = self.position[_move._from() as usize];
+                        self.position[_move._from() as usize] = Piece::default();
+                    }
+                }
             },
             _ => todo!()
         }
