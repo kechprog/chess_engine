@@ -52,6 +52,10 @@ impl TwoPlayerAgent {
                 dbg!(legal_moves[i]._from(), legal_moves[i]._to(), legal_moves[i].move_type());
                 self.position.mk_move(legal_moves[i]);
                 self.selected_tile = None;
+                
+                self.pov = self.pov.opposite();
+                self.board_drawer
+                    .draw_position(&self.position, self.selected_tile, self.pov);
             }
             None => {
                 self.selected_tile = Some(clicked_tile);

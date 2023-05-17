@@ -45,9 +45,10 @@ impl BoardDrawer {
                     .draw(idx as usize, *p, self.board_dimensions, false, &mut target)
             }),
 
+            // needs to be reversed
             Color::Black => position.position.iter().enumerate().for_each(|(idx, p)| {
                 self.tile_drawer.draw(
-                    63 - idx as usize,
+                    idx as usize,
                     *p,
                     self.board_dimensions,
                     false,

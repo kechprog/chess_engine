@@ -8,6 +8,7 @@ use super::*;
 
 pub struct Position {
     pub position: [Piece; 64],
+    pub prev_moves: Vec<Move>,
 }
 
 impl Default for Position {
@@ -31,7 +32,10 @@ impl Position {
         }
 
         board.reverse();
-        Self { position: board }
+        Self { 
+            position: board,
+            prev_moves: vec![] 
+        }
     }
 
     // TODO OTHER TYPES OF MOVES
@@ -49,8 +53,13 @@ impl Position {
                 };
                 self.position[_move._from() as usize] = Piece::default();
             },
-            _ => todo!("Not implemented yet"),
+            MoveType::EnPassant => {
+                panic!("I'm to lazy to implement it")
+            },
+            _ => todo!()
         }
+
+        self.prev_moves.push(_move);
     }
 
     pub fn legal_moves(&self, idx: usize) -> Vec<Move> {
