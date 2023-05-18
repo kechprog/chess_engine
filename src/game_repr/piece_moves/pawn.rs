@@ -1,10 +1,5 @@
-use glium::glutin::platform::unix::x11::ffi::PictFormat;
-
-use crate::game_repr::{Move, MoveType};
-
-use super::super::{
-    piece::{Color, Piece, Type},
-    position::Position,
+use crate::{
+    game_repr::{Color, Move, MoveType, Piece, Position, Type},
 };
 
 impl Position {
