@@ -20,6 +20,7 @@ pub struct TwoPlayerAgent {
     turn: Color,
     mouse_pos: PhysicalPosition<f64>,
     selected_tile: Option<u8>,
+    game_over: bool,
 }
 
 impl TwoPlayerAgent {
@@ -32,6 +33,7 @@ impl TwoPlayerAgent {
             mouse_pos: PhysicalPosition::new(0.0, 0.0),
             turn: Color::White,
             selected_tile: None,
+            game_over: false,
         }
     }
 
@@ -42,12 +44,24 @@ impl TwoPlayerAgent {
     // TODO: refactor!!!
     // TODO: FIXME
     fn mouse_click(&mut self, pos: PhysicalPosition<f64>) {
+        // Prevent moves when game is over
+        if self.game_over {
+            return;
+        }
+
         let clicked_tile = if self.renderer.coord_to_tile(pos, self.turn).is_none() {
             self.selected_tile = None;
             self.window.request_redraw();
             return;
         } else if self.selected_tile.is_none() {
-            self.selected_tile = self.renderer.coord_to_tile(pos, self.turn);
+            let tile = self.renderer.coord_to_tile(pos, self.turn);
+            // Only select pieces that belong to the current player
+            if let Some(tile_idx) = tile {
+                let piece = self.position.position[tile_idx as usize];
+                if piece.color == self.turn {
+                    self.selected_tile = tile;
+                }
+            }
             self.window.request_redraw();
             return;
         } else {
@@ -61,11 +75,21 @@ impl TwoPlayerAgent {
             .position(|m| m._to() == clicked_tile as usize && m._from() == selected_tile as usize)
         {
             Some(i) => {
-                dbg!();
                 self.position.mk_move(legal_moves[i]);
                 self.selected_tile = None;
 
                 self.turn = self.turn.opposite();
+
+                // Check for game ending conditions after switching turns
+                if self.position.is_checkmate(self.turn) {
+                    self.game_over = true;
+                    println!("Checkmate! {:?} wins!", self.turn.opposite());
+                } else if self.position.is_stalemate(self.turn) {
+                    self.game_over = true;
+                    println!("Stalemate! Draw.");
+                } else if self.position.is_in_check(self.turn) {
+                    println!("Check!");
+                }
             }
             None => {
                 self.selected_tile = Some(clicked_tile);
