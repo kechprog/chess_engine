@@ -1097,6 +1097,60 @@ mod tests {
         assert!(!has_move(&moves, 0, 27), "Bishop cannot move past captured piece");
     }
 
+    // ==================== EN PASSANT DIRECTION BUG TEST ====================
+
+    #[test]
+    fn test_en_passant_direction_white() {
+        // White pawn at d4, black pawn moves c7->c5 (double move next to white pawn)
+        // White pawn at d4 should capture to c6 (toward enemy), not somewhere else
+        let mut pos = empty_board();
+
+        // Place white pawn at d4 (index 27 = row 3, col 3)
+        pos.position[27] = Piece { color: Color::White, piece_type: Type::Pawn };
+
+        // Place black pawn at c4 (index 26 = row 3, col 2) - adjacent to white pawn
+        pos.position[26] = Piece { color: Color::Black, piece_type: Type::Pawn };
+
+        // Simulate the previous move: c6->c4 (index 42->26, distance = 16)
+        pos.prev_moves = vec![Move::new(42, 26, MoveType::Normal)];
+
+        // Place kings
+        pos.position[4] = Piece { color: Color::White, piece_type: Type::King };
+        pos.position[60] = Piece { color: Color::Black, piece_type: Type::King };
+
+        let moves = pos.legal_moves(27);
+
+        // Should be able to capture via en passant to c5 (index 34)
+        // White pawn at d4 (27) captures left-forward with offset 7: 27 + 7 = 34 (c5)
+        assert!(has_move(&moves, 27, 34), "White pawn at d4 should capture LEFT to c5 via en passant");
+    }
+
+    #[test]
+    fn test_en_passant_direction_black() {
+        // Black pawn at d5, white pawn moves e3->e5 (double move next to black pawn)
+        // Black pawn at d5 should capture to e4 (toward enemy), not somewhere else
+        let mut pos = empty_board();
+
+        // Place black pawn at d5 (index 35 = row 4, col 3)
+        pos.position[35] = Piece { color: Color::Black, piece_type: Type::Pawn };
+
+        // Place white pawn at e5 (index 36 = row 4, col 4) - adjacent to black pawn
+        pos.position[36] = Piece { color: Color::White, piece_type: Type::Pawn };
+
+        // Simulate the previous move: e3->e5 (index 20->36, distance = 16)
+        pos.prev_moves = vec![Move::new(20, 36, MoveType::Normal)];
+
+        // Place kings
+        pos.position[4] = Piece { color: Color::White, piece_type: Type::King };
+        pos.position[60] = Piece { color: Color::Black, piece_type: Type::King };
+
+        let moves = pos.legal_moves(35);
+
+        // Should be able to capture via en passant to e4 (index 28)
+        // Black pawn at d5 (35) captures right-forward with offset -7: 35 + (-7) = 28 (e4)
+        assert!(has_move(&moves, 35, 28), "Black pawn at d5 should capture RIGHT to e4 via en passant");
+    }
+
     // ==================== PAWN EDGE SQUARE BUG TEST ====================
 
     #[test]

@@ -56,18 +56,18 @@ impl Position {
             && self.position[prev_to].piece_type == Type::Pawn
             && ((prev_move._from() as i64 - prev_move._to() as i64).abs() == 16 )
             {
-                // Check right adjacent square (prevent rank wrapping)
+                // Check if enemy pawn is to the left (prev_to + 1 == idx means enemy at lower column)
                 if prev_to + 1 == idx as usize && prev_to / 8 == idx as usize / 8 {
                     moves.push(Move::new(idx as u8, match piece.color {
-                        Color::White => (idx + offset.0) as u8,
-                        Color::Black => (idx + offset.2) as u8
+                        Color::White => (idx + offset.0) as u8,  // Capture left-forward
+                        Color::Black => (idx + offset.0) as u8   // Capture left-forward (toward enemy)
                     }, MoveType::EnPassant))
                 }
-                // Check left adjacent square (prevent rank wrapping)
+                // Check if enemy pawn is to the right (prev_to - 1 == idx means enemy at higher column)
                 else if prev_to > 0 && prev_to - 1 == idx as usize && prev_to / 8 == idx as usize / 8 {
                     moves.push(Move::new(idx as u8, match piece.color {
-                        Color::White => (idx + offset.2) as u8,
-                        Color::Black => (idx + offset.0) as u8
+                        Color::White => (idx + offset.2) as u8,  // Capture right-forward
+                        Color::Black => (idx + offset.2) as u8   // Capture right-forward (toward enemy)
                     }, MoveType::EnPassant))
                 }
             }
