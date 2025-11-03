@@ -1,4 +1,3 @@
-use glium::{Display, Texture2d};
 use image::ColorType;
 use std::{error::Error, rc::Rc};
 
@@ -111,33 +110,6 @@ impl Piece {
             },
             _ => panic!("Invalid character, unable to transfrom into piece"),
         }
-    }
-
-    pub fn get_texture(&self, display: &Display) -> Texture2d {
-        let prefix = match self.color {
-            Color::White => "w_",
-            Color::Black => "b_",
-            _ => unreachable!("this should never happen"),
-        };
-        let name = match self.piece_type {
-            Type::Pawn => "pawn",
-            Type::Knight => "knight",
-            Type::Bishop => "bishop",
-            Type::Rook => "rook",
-            Type::Queen => "queen",
-            Type::King => "king",
-            _ => unreachable!("this should never happen"),
-        };
-
-        let img = image::open(format!("src/assets/{}{}_png_128px.png", prefix, name))
-            .expect(format!("check ur hard drive").as_str())
-            .to_rgba8();
-        let img_dimensions = img.dimensions();
-        glium::texture::Texture2d::new(
-            display,
-            glium::texture::RawImage2d::from_raw_rgba(img.into_raw(), img_dimensions),
-        )
-        .expect("pc is burning")
     }
 
     // true = white, false = black

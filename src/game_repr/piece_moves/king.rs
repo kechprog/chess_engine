@@ -8,7 +8,7 @@ use super::super::{
 impl Position {
     // TODO: add castaling
     pub fn king_moves(&self, idx: usize) -> Vec<Move> {
-        let moves = [
+        [
             idx as i64 + 1,
             idx as i64 - 1,
             idx as i64 + 8,
@@ -25,7 +25,7 @@ impl Position {
             && self.position[idx as usize].piece_type != Type::None
         ))
         .map(move |&x| Move::new(idx as u8, x as u8, MoveType::Normal))
-        .collect();
+        .collect()
     }
 
     fn can_castle_long(&self, idx: usize) -> bool {
