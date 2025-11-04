@@ -2,9 +2,10 @@ use crate::game_repr::{Color, Move, MoveType, Position, Type};
 use crate::game_repr::bitboards::{pop_lsb, tables::PAWN_ATTACKS};
 
 impl Position {
-    pub fn pawn_moves(&self, idx: usize) -> Vec<Move> {
+    /// Generate pawn moves into a provided buffer
+    pub fn pawn_moves_into(&self, idx: usize, moves: &mut Vec<Move>) {
         let piece = self.position[idx];
-        let mut moves = Vec::with_capacity(16);  // Max: 4 moves × 4 promotion types
+        let start_len = moves.len();  // Track where we started adding moves
 
         // Single square forward move
         let single_forward = if piece.color == Color::White {
@@ -81,23 +82,35 @@ impl Position {
             }
         }
 
-        // Generate promotion moves: for each move reaching the back rank, create 4 moves (Q, R, B, N)
-        let mut result = Vec::new();
-        for m in moves {
+        // Handle promotions: replace moves that reach the back rank with 4 promotion variants
+        // We need to check all moves we just added (from start_len to end)
+        let end_len = moves.len();
+        let mut promotion_moves = Vec::new();
+
+        for i in (start_len..end_len).rev() {
+            let m = moves[i];
             let is_promotion = (m._to() / 8 == 7 && piece.color == Color::White)
                             || (m._to() / 8 == 0 && piece.color == Color::Black);
 
             if is_promotion {
-                // Generate 4 promotion moves (Queen, Rook, Bishop, Knight)
-                result.push(Move::new(m._from() as u8, m._to() as u8, MoveType::PromotionQueen));
-                result.push(Move::new(m._from() as u8, m._to() as u8, MoveType::PromotionRook));
-                result.push(Move::new(m._from() as u8, m._to() as u8, MoveType::PromotionBishop));
-                result.push(Move::new(m._from() as u8, m._to() as u8, MoveType::PromotionKnight));
-            } else {
-                result.push(m);
+                // Remove the original move
+                moves.swap_remove(i);
+                // Add 4 promotion variants to our temporary vector
+                promotion_moves.push(Move::new(m._from() as u8, m._to() as u8, MoveType::PromotionQueen));
+                promotion_moves.push(Move::new(m._from() as u8, m._to() as u8, MoveType::PromotionRook));
+                promotion_moves.push(Move::new(m._from() as u8, m._to() as u8, MoveType::PromotionBishop));
+                promotion_moves.push(Move::new(m._from() as u8, m._to() as u8, MoveType::PromotionKnight));
             }
         }
 
-        result
+        // Add all promotion moves to the buffer
+        moves.extend(promotion_moves);
+    }
+
+    /// Generate pawn moves (backward-compatible wrapper)
+    pub fn pawn_moves(&self, idx: usize) -> Vec<Move> {
+        let mut moves = Vec::with_capacity(16);  // Max: 4 moves × 4 promotion types
+        self.pawn_moves_into(idx, &mut moves);
+        moves
     }
 }

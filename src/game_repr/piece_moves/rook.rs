@@ -4,8 +4,8 @@ use crate::game_repr::bitboards::{pop_lsb, bitscan_forward, tables::*};
 use super::super::position::Position;
 
 impl Position {
-    pub fn rook_moves(&self, idx: usize, include_friendly: bool) -> Vec<Move> {
-        let mut moves = Vec::with_capacity(14);  // Rooks have max 14 moves (7 per direction)
+    /// Generate rook moves into a provided buffer
+    pub fn rook_moves_into(&self, idx: usize, include_friendly: bool, moves: &mut Vec<Move>) {
         let moving_piece = self.position[idx];
         let occupied = self.bitboards.all_occupied();
         let friendly_pieces = self.bitboards.occupied_by_color(moving_piece.color);
@@ -44,7 +44,12 @@ impl Position {
                 moves.push(Move::new(idx as u8, target_sq as u8, MoveType::Normal));
             }
         }
+    }
 
+    /// Generate rook moves (backward-compatible wrapper)
+    pub fn rook_moves(&self, idx: usize, include_friendly: bool) -> Vec<Move> {
+        let mut moves = Vec::with_capacity(14);  // Rooks have max 14 moves (7 per direction)
+        self.rook_moves_into(idx, include_friendly, &mut moves);
         moves
     }
 }

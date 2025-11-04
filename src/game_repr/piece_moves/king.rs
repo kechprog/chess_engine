@@ -7,7 +7,8 @@ use super::super::{
 };
 
 impl Position {
-    pub fn king_moves(&self, idx: usize) -> Vec<Move> {
+    /// Generate king moves into a provided buffer
+    pub fn king_moves_into(&self, idx: usize, moves: &mut Vec<Move>) {
         let king_color = self.position[idx].color;
 
         // Get all squares the king can attack using the precomputed table
@@ -20,7 +21,6 @@ impl Position {
         attacks &= !friendly_pieces;
 
         // Generate moves for each target square
-        let mut moves = Vec::with_capacity(8);
         while attacks != 0 {
             let target_sq = pop_lsb(&mut attacks);
             moves.push(Move::new(idx as u8, target_sq as u8, MoveType::Normal));
@@ -34,12 +34,12 @@ impl Position {
         };
 
         if !is_king_on_starting_square {
-            return moves;
+            return;
         }
 
         // Check if king is currently in check (can't castle out of check)
         if self.is_in_check(king_color) {
-            return moves;
+            return;
         }
 
         // Get castling condition indices for this color
@@ -99,7 +99,12 @@ impl Position {
                 moves.push(Move::new(idx as u8, c_square as u8, MoveType::Castling));
             }
         }
+    }
 
+    /// Generate king moves (backward-compatible wrapper)
+    pub fn king_moves(&self, idx: usize) -> Vec<Move> {
+        let mut moves = Vec::with_capacity(10);  // Kings have max 8 normal moves + 2 castling
+        self.king_moves_into(idx, &mut moves);
         moves
     }
 }

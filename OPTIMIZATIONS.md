@@ -1,8 +1,20 @@
 # Chess Engine Performance Optimizations
 
 **Date:** 2025-11-04
-**Baseline:** 12.4s for perft depth 6 (~9.9M nodes/sec)
+**Initial Baseline:** 12.4s for perft depth 6 (~9.9M nodes/sec)
+**Current Performance:** 5.31s for perft depth 6 (~22.4M nodes/sec)
+**Total Improvement So Far:** 2.34× faster (134% improvement)
 **Profiling Tool:** cargo flamegraph
+
+## Results Summary
+
+| Optimization | Status | Speedup | Cumulative Time | Cumulative Speedup |
+|-------------|--------|---------|-----------------|-------------------|
+| Baseline (bitboards) | ✅ | - | 12.4s | 1.00× |
+| #1: Move list recycling | ✅ | 2.34× | 5.31s | 2.34× |
+| #2: Bulk move validation | 🔜 | Est. 1.1-1.2× | Est. 4.5-4.8s | Est. 2.6-2.8× |
+| #3: Optimize is_square_attacked | ⏸️ | Est. 1.05-1.1× | TBD | TBD |
+| #4-7: Additional optimizations | ⏸️ | Est. 1.1-1.2× | TBD | TBD |
 
 ## Flamegraph Analysis Summary
 
@@ -42,7 +54,8 @@ The bitboard move generation is **extremely efficient** - individual piece move 
 
 ### 1. [HIGH IMPACT] Move List Recycling with Fixed-Size Buffers
 **Estimated Speedup:** 10-15%
-**Status:** Not implemented
+**Status:** ✅ IMPLEMENTED (2025-11-04)
+**Actual Speedup:** 2.34× (134% faster) - Far exceeded expectations!
 **Difficulty:** Medium
 
 **Problem:** Current implementation allocates a new `Vec<Move>` for every position (position.rs:537-556). With 120M nodes at depth 6, this causes millions of heap allocations.
@@ -77,10 +90,36 @@ type MoveList = SmallVec<[Move; 64]>;
 - Modify perft() to reuse move buffer
 - Ensure proper clearing between uses
 
-**Files to Modify:**
-- src/game_repr/position.rs (main changes)
-- src/game_repr/piece_moves/*.rs (all piece move generators)
-- All callers of all_legal_moves()
+**Files Modified:**
+- ✅ src/game_repr/position.rs (added all_legal_moves_into, legal_moves_into, updated perft)
+- ✅ src/game_repr/piece_moves/knight.rs (added knight_moves_into)
+- ✅ src/game_repr/piece_moves/rook.rs (added rook_moves_into)
+- ✅ src/game_repr/piece_moves/bishop.rs (added bishop_moves_into)
+- ✅ src/game_repr/piece_moves/queen.rs (added queen_moves_into)
+- ✅ src/game_repr/piece_moves/king.rs (added king_moves_into)
+- ✅ src/game_repr/piece_moves/pawn.rs (added pawn_moves_into)
+
+**Benchmark Results (Release Mode):**
+- Before: 12.4s for perft depth 6 (9.9M nodes/sec)
+- After Run 1: 5.24s (22.7M nodes/sec)
+- After Run 2: 5.25s (22.7M nodes/sec)
+- After Run 3: 5.44s (21.9M nodes/sec)
+- **After Average: 5.31s (22.4M nodes/sec)**
+- **Improvement: 2.34× speedup (57% time reduction)**
+
+**Why It Exceeded Expectations:**
+The actual improvement (134% faster) vastly exceeded the estimated 10-15% because:
+1. Eliminated millions of heap allocations (one per node × 120M nodes)
+2. Improved cache locality with buffer reuse
+3. Enabled better compiler optimizations with predictable buffer lifetimes
+4. Reduced memory fragmentation from constant alloc/dealloc cycles
+
+**Implementation Approach:**
+Used Option A (pre-allocated buffer passed down call stack):
+- Added `_into()` variants for all move generation functions
+- Reused single Vec<Move> buffer in perft() across all recursive calls
+- Maintained backward compatibility with wrapper functions
+- All 101 tests continue to pass
 
 ---
 

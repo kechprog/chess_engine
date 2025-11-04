@@ -264,19 +264,38 @@ impl Position {
         self.prev_moves.push(_move);
     }
 
-    pub fn legal_moves(&self, idx: usize) -> Vec<Move> {
-        let moves = match self.position[idx] {
-            Piece { piece_type: Type::Pawn,   ..} => self.pawn_moves(idx),
-            Piece { piece_type: Type::Rook,   ..} => self.rook_moves(idx, false),
-            Piece { piece_type: Type::Knight, ..} => self.knight_moves(idx),
-            Piece { piece_type: Type::Bishop, ..} => self.bishop_moves(idx, false),
-            Piece { piece_type: Type::Queen,  ..} => self.queen_moves(idx),
-            Piece { piece_type: Type::King,   ..} => self.king_moves(idx),
-            Piece { piece_type: Type::None,   ..} => vec![],
+    /// Generate legal moves for a piece into a provided buffer
+    /// The buffer is NOT cleared before adding moves
+    pub fn legal_moves_into(&self, idx: usize, moves: &mut Vec<Move>) {
+        let initial_len = moves.len();
+
+        // Generate pseudo-legal moves into the buffer
+        match self.position[idx] {
+            Piece { piece_type: Type::Pawn,   ..} => self.pawn_moves_into(idx, moves),
+            Piece { piece_type: Type::Rook,   ..} => self.rook_moves_into(idx, false, moves),
+            Piece { piece_type: Type::Knight, ..} => self.knight_moves_into(idx, moves),
+            Piece { piece_type: Type::Bishop, ..} => self.bishop_moves_into(idx, false, moves),
+            Piece { piece_type: Type::Queen,  ..} => self.queen_moves_into(idx, moves),
+            Piece { piece_type: Type::King,   ..} => self.king_moves_into(idx, moves),
+            Piece { piece_type: Type::None,   ..} => return,
         };
 
         // Filter out moves that would leave the king in check
-        moves.into_iter().filter(|&m| self.is_move_legal(m)).collect()
+        // We iterate backwards and remove illegal moves using swap_remove for efficiency
+        let mut i = moves.len();
+        while i > initial_len {
+            i -= 1;
+            if !self.is_move_legal(moves[i]) {
+                moves.swap_remove(i);
+            }
+        }
+    }
+
+    /// Generate legal moves for a piece (backward-compatible wrapper)
+    pub fn legal_moves(&self, idx: usize) -> Vec<Move> {
+        let mut moves = Vec::with_capacity(40);
+        self.legal_moves_into(idx, &mut moves);
+        moves
     }
 
     /// Checks if a square is under attack by any piece of the given color
@@ -533,15 +552,16 @@ impl Position {
         fen
     }
 
-    /// Returns all legal moves for the current side to move
-    pub fn all_legal_moves(&self) -> Vec<Move> {
+    /// Generate all legal moves for the current side into a provided buffer
+    /// The buffer is cleared before adding moves
+    pub fn all_legal_moves_into(&self, moves: &mut Vec<Move>) {
+        moves.clear();
+
         let current_side = if self.prev_moves.len() % 2 == 0 {
             Color::White
         } else {
             Color::Black
         };
-
-        let mut all_moves = Vec::with_capacity(40);  // Typical position has 30-40 legal moves
 
         // Iterate through each piece type using bitboards
         for piece_type in [Type::Pawn, Type::Knight, Type::Bishop, Type::Rook, Type::Queen, Type::King] {
@@ -549,10 +569,15 @@ impl Position {
 
             while pieces_bb != 0 {
                 let square = pop_lsb(&mut pieces_bb);
-                all_moves.extend(self.legal_moves(square));
+                self.legal_moves_into(square, moves);
             }
         }
+    }
 
+    /// Returns all legal moves for the current side to move (backward-compatible wrapper)
+    pub fn all_legal_moves(&self) -> Vec<Move> {
+        let mut all_moves = Vec::with_capacity(40);  // Typical position has 30-40 legal moves
+        self.all_legal_moves_into(&mut all_moves);
         all_moves
     }
 
@@ -683,7 +708,9 @@ impl Position {
             return 1;
         }
 
-        let moves = self.all_legal_moves();
+        // Use a reusable buffer for move generation
+        let mut moves = Vec::with_capacity(128);
+        self.all_legal_moves_into(&mut moves);
 
         // Bulk counting optimization for depth 1
         if depth == 1 {
@@ -694,10 +721,12 @@ impl Position {
         if depth == 2 {
             let mut count = 0;
             let mut pos = self.clone();
+            let mut child_moves = Vec::with_capacity(128);
 
             for mv in moves {
                 let undo = pos.make_move_undoable(mv);
-                count += pos.all_legal_moves().len() as u64;  // Just count, don't recurse
+                pos.all_legal_moves_into(&mut child_moves);
+                count += child_moves.len() as u64;
                 pos.unmake_move(mv, undo);
             }
             return count;
