@@ -6,6 +6,7 @@ use super::*;
  */
 
 
+#[derive(Clone)]
 pub struct Position {
     pub position: [Piece; 64],
     pub prev_moves: Vec<Move>,
@@ -24,12 +25,15 @@ impl Default for Position {
 
 impl Position {
 
-    // TODO add notaion for castling
     pub fn from_fen(fen_str: &str) -> Position {
+        let parts: Vec<&str> = fen_str.split_whitespace().collect();
+
+        // Parse piece placement (always present)
+        let piece_placement = parts.get(0).unwrap_or(&"");
         let mut idx: usize = 56;
         let mut board = [Piece::default(); 64];
 
-        for c in fen_str.chars() {
+        for c in piece_placement.chars() {
             match c {
                 '/' => {
                     idx = idx - 16;
@@ -44,10 +48,42 @@ impl Position {
             }
         }
 
+        // Parse castling rights (if present)
+        // castling_cond: [white_kingside_rook, white_queenside_rook, white_king, black_kingside_rook, black_queenside_rook, black_king]
+        let mut castling_cond = [false; 6];
+        if let Some(castling_str) = parts.get(2) {
+            if *castling_str != "-" {
+                for c in castling_str.chars() {
+                    match c {
+                        'K' => {
+                            castling_cond[0] = true;  // White kingside rook
+                            castling_cond[2] = true;  // White king
+                        }
+                        'Q' => {
+                            castling_cond[1] = true;  // White queenside rook
+                            castling_cond[2] = true;  // White king
+                        }
+                        'k' => {
+                            castling_cond[3] = true;  // Black kingside rook
+                            castling_cond[5] = true;  // Black king
+                        }
+                        'q' => {
+                            castling_cond[4] = true;  // Black queenside rook
+                            castling_cond[5] = true;  // Black king
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        } else {
+            // No castling rights specified, default to all true (for backward compatibility)
+            castling_cond = [true; 6];
+        }
+
         Self {
             position: board,
             prev_moves: Vec::new(),
-            castling_cond: [true; 6],
+            castling_cond,
         }
     }
 
@@ -93,9 +129,30 @@ impl Position {
                 self.position[to] = self.position[from];
                 self.position[from] = Piece::default();
             },
-            MoveType::Promotion => {
+            MoveType::PromotionQueen => {
                 self.position[to] = Piece{
                     piece_type: Type::Queen,
+                    color: self.position[from].color
+                };
+                self.position[from] = Piece::default();
+            },
+            MoveType::PromotionRook => {
+                self.position[to] = Piece{
+                    piece_type: Type::Rook,
+                    color: self.position[from].color
+                };
+                self.position[from] = Piece::default();
+            },
+            MoveType::PromotionBishop => {
+                self.position[to] = Piece{
+                    piece_type: Type::Bishop,
+                    color: self.position[from].color
+                };
+                self.position[from] = Piece::default();
+            },
+            MoveType::PromotionKnight => {
+                self.position[to] = Piece{
+                    piece_type: Type::Knight,
                     color: self.position[from].color
                 };
                 self.position[from] = Piece::default();
@@ -345,5 +402,182 @@ impl Position {
     /// (NOT in check AND has no legal moves)
     pub fn is_stalemate(&self, color: Color) -> bool {
         !self.is_in_check(color) && !self.has_legal_moves(color)
+    }
+
+    /// Converts the current position to FEN notation
+    pub fn to_fen(&self) -> String {
+        let mut fen = String::new();
+
+        // Piece placement (starting from rank 8 down to rank 1)
+        for rank in (0..8).rev() {
+            let mut empty_count = 0;
+            for file in 0..8 {
+                let idx = rank * 8 + file;
+                let piece = self.position[idx];
+
+                if piece.piece_type == Type::None {
+                    empty_count += 1;
+                } else {
+                    if empty_count > 0 {
+                        fen.push_str(&empty_count.to_string());
+                        empty_count = 0;
+                    }
+
+                    let piece_char = match (piece.piece_type, piece.color) {
+                        (Type::King, Color::White) => 'K',
+                        (Type::Queen, Color::White) => 'Q',
+                        (Type::Rook, Color::White) => 'R',
+                        (Type::Bishop, Color::White) => 'B',
+                        (Type::Knight, Color::White) => 'N',
+                        (Type::Pawn, Color::White) => 'P',
+                        (Type::King, Color::Black) => 'k',
+                        (Type::Queen, Color::Black) => 'q',
+                        (Type::Rook, Color::Black) => 'r',
+                        (Type::Bishop, Color::Black) => 'b',
+                        (Type::Knight, Color::Black) => 'n',
+                        (Type::Pawn, Color::Black) => 'p',
+                        (Type::None, _) => unreachable!(),
+                    };
+                    fen.push(piece_char);
+                }
+            }
+
+            if empty_count > 0 {
+                fen.push_str(&empty_count.to_string());
+            }
+
+            if rank > 0 {
+                fen.push('/');
+            }
+        }
+
+        // Side to move (even number of moves = white, odd = black)
+        let side_to_move = if self.prev_moves.len() % 2 == 0 { "w" } else { "b" };
+        fen.push_str(&format!(" {}", side_to_move));
+
+        // Castling availability
+        let mut castling = String::new();
+        if self.castling_cond[2] {  // White king hasn't moved
+            if self.castling_cond[0] {  // White kingside rook
+                castling.push('K');
+            }
+            if self.castling_cond[1] {  // White queenside rook
+                castling.push('Q');
+            }
+        }
+        if self.castling_cond[5] {  // Black king hasn't moved
+            if self.castling_cond[3] {  // Black kingside rook
+                castling.push('k');
+            }
+            if self.castling_cond[4] {  // Black queenside rook
+                castling.push('q');
+            }
+        }
+        if castling.is_empty() {
+            castling.push('-');
+        }
+        fen.push_str(&format!(" {}", castling));
+
+        // En passant square
+        let en_passant = if let Some(last_move) = self.prev_moves.last() {
+            let from = last_move._from();
+            let to = last_move._to();
+            let moved_piece = self.position[to];
+
+            // Check if it was a pawn double move
+            if moved_piece.piece_type == Type::Pawn {
+                let distance = if to > from { to - from } else { from - to };
+                if distance == 16 {
+                    // En passant square is between from and to
+                    let ep_square = (from + to) / 2;
+                    let file = (ep_square % 8) as u8;
+                    let rank = (ep_square / 8) as u8;
+                    let file_char = (b'a' + file) as char;
+                    let rank_char = (b'1' + rank) as char;
+                    format!("{}{}", file_char, rank_char)
+                } else {
+                    "-".to_string()
+                }
+            } else {
+                "-".to_string()
+            }
+        } else {
+            "-".to_string()
+        };
+        fen.push_str(&format!(" {}", en_passant));
+
+        // Halfmove clock and fullmove number (simplified)
+        fen.push_str(" 0 1");
+
+        fen
+    }
+
+    /// Returns all legal moves for the current side to move
+    pub fn all_legal_moves(&self) -> Vec<Move> {
+        let current_side = if self.prev_moves.len() % 2 == 0 {
+            Color::White
+        } else {
+            Color::Black
+        };
+
+        let mut all_moves = Vec::new();
+        for idx in 0..64 {
+            let piece = self.position[idx];
+            if piece.piece_type != Type::None && piece.color == current_side {
+                all_moves.extend(self.legal_moves(idx));
+            }
+        }
+        all_moves
+    }
+
+    /// Perft (Performance Test) - counts nodes at a given depth
+    /// Used to validate move generation correctness
+    pub fn perft(&self, depth: u32) -> u64 {
+        if depth == 0 {
+            return 1;
+        }
+
+        let moves = self.all_legal_moves();
+
+        // Bulk counting optimization for depth 1
+        if depth == 1 {
+            return moves.len() as u64;
+        }
+
+        let mut nodes = 0;
+        for mv in moves {
+            let mut new_pos = self.clone();
+            new_pos.mk_move(mv);
+            nodes += new_pos.perft(depth - 1);
+        }
+
+        nodes
+    }
+
+    /// Divide - shows perft count for each first-level move (debugging tool)
+    pub fn divide(&self, depth: u32) -> u64 {
+        let moves = self.all_legal_moves();
+        let mut total = 0;
+
+        for mv in moves {
+            let from = mv._from();
+            let to = mv._to();
+
+            // Convert indices to algebraic notation
+            let from_file = (b'a' + (from % 8) as u8) as char;
+            let from_rank = (b'1' + (from / 8) as u8) as char;
+            let to_file = (b'a' + (to % 8) as u8) as char;
+            let to_rank = (b'1' + (to / 8) as u8) as char;
+
+            let mut new_pos = self.clone();
+            new_pos.mk_move(mv);
+            let count = new_pos.perft(depth - 1);
+
+            println!("{}{}{}{}: {}", from_file, from_rank, to_file, to_rank, count);
+            total += count;
+        }
+
+        println!("\nTotal: {}", total);
+        total
     }
 }

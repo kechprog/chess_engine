@@ -29,6 +29,7 @@ impl Position {
         let idx = idx as i64;
         let mut moves = vec![];
 
+        // Pawns on starting rank can move 1 or 2 squares forward
         if (idx / 8 == 1 && piece.color == Color::White)
             || (idx / 8 == 6 && piece.color == Color::Black)
         {
@@ -40,10 +41,11 @@ impl Position {
                     break;
                 }
             }
-        }
-
-        if self.position[(idx + offset.1) as usize].piece_type == Type::None {
-            moves.push(Move::new(idx as u8, (idx + offset.1) as u8, MoveType::Normal))
+        } else {
+            // Pawns not on starting rank can only move 1 square forward
+            if self.position[(idx + offset.1) as usize].piece_type == Type::None {
+                moves.push(Move::new(idx as u8, (idx + offset.1) as u8, MoveType::Normal))
+            }
         }
 
         // on passant - only check if there was a previous move
@@ -95,13 +97,23 @@ impl Position {
         }
         moves.append(&mut capture_moves);
 
-        moves.iter()
-            .map(|&m| if ((m._to() / 8) == 7 && piece.color == Color::White) 
-                      || ((m._to() / 8) == 0 && piece.color == Color::Black)
-            {
-                Move::new(m._from() as u8, m._to() as u8, MoveType::Promotion)
+        // Generate promotion moves: for each move reaching the back rank, create 4 moves (Q, R, B, N)
+        let mut result = Vec::new();
+        for m in moves {
+            let is_promotion = (m._to() / 8 == 7 && piece.color == Color::White)
+                            || (m._to() / 8 == 0 && piece.color == Color::Black);
+
+            if is_promotion {
+                // Generate 4 promotion moves (Queen, Rook, Bishop, Knight)
+                result.push(Move::new(m._from() as u8, m._to() as u8, MoveType::PromotionQueen));
+                result.push(Move::new(m._from() as u8, m._to() as u8, MoveType::PromotionRook));
+                result.push(Move::new(m._from() as u8, m._to() as u8, MoveType::PromotionBishop));
+                result.push(Move::new(m._from() as u8, m._to() as u8, MoveType::PromotionKnight));
             } else {
-                m
-            }).collect()
+                result.push(m);
+            }
+        }
+
+        result
     }
 }

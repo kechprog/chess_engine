@@ -21,11 +21,14 @@ mod tests {
     /// Helper function to count moves of a specific type
     fn count_move_type(moves: &[Move], move_type: MoveType) -> usize {
         moves.iter().filter(|m| {
-            match (m.move_type(), move_type) {
+            let mt = m.move_type();
+            match (mt, move_type) {
                 (MoveType::Normal, MoveType::Normal) => true,
                 (MoveType::EnPassant, MoveType::EnPassant) => true,
-                (MoveType::Promotion, MoveType::Promotion) => true,
                 (MoveType::Castling, MoveType::Castling) => true,
+                // Match any promotion type
+                _ if mt.is_promotion() && move_type.is_promotion() => true,
+                (a, b) if a == b => true,
                 _ => false,
             }
         }).count()
@@ -657,7 +660,7 @@ mod tests {
         let moves = pos.legal_moves(54);
 
         // Check that move to 8th rank is a promotion
-        let promotion_moves = count_move_type(&moves, MoveType::Promotion);
+        let promotion_moves = count_move_type(&moves, MoveType::PromotionQueen);
         assert!(promotion_moves > 0, "Pawn should promote on reaching back rank");
     }
 
@@ -669,7 +672,7 @@ mod tests {
         pos.position[54] = Piece { color: Color::White, piece_type: Type::Pawn };
 
         // Move to 8th rank (should auto-promote to queen)
-        pos.mk_move(Move::new(54, 62, MoveType::Promotion));
+        pos.mk_move(Move::new(54, 62, MoveType::PromotionQueen));
 
         // Check it's a queen
         assert_eq!(pos.position[62].piece_type, Type::Queen);
@@ -693,7 +696,7 @@ mod tests {
 
         // Should have promotion move for capture
         let has_promotion_capture = moves.iter().any(|m| {
-            m._from() == 54 && m._to() == 63 && matches!(m.move_type(), MoveType::Promotion)
+            m._from() == 54 && m._to() == 63 && m.move_type().is_promotion()
         });
 
         assert!(has_promotion_capture, "Pawn should promote when capturing on back rank");
@@ -709,11 +712,11 @@ mod tests {
         let moves = pos.legal_moves(9);
 
         // Check for promotion move
-        let promotion_moves = count_move_type(&moves, MoveType::Promotion);
+        let promotion_moves = count_move_type(&moves, MoveType::PromotionQueen);
         assert!(promotion_moves > 0, "Black pawn should promote on reaching 1st rank");
 
         // Execute promotion
-        pos.mk_move(Move::new(9, 1, MoveType::Promotion));
+        pos.mk_move(Move::new(9, 1, MoveType::PromotionQueen));
 
         assert_eq!(pos.position[1].piece_type, Type::Queen);
         assert_eq!(pos.position[1].color, Color::Black);
@@ -1269,6 +1272,438 @@ mod tests {
         for i in 0..64 {
             if i != 4 && i != 60 {
                 assert_eq!(pos.position[i].piece_type, Type::None);
+            }
+        }
+    }
+
+    // ==================== PERFT TESTS ====================
+
+    #[test]
+    fn test_debug_starting_moves() {
+        let pos = Position::default();
+        let moves = pos.all_legal_moves();
+
+        println!("\nTotal moves: {}", moves.len());
+        for mv in &moves {
+            let from = mv._from();
+            let to = mv._to();
+            let from_file = (b'a' + (from % 8) as u8) as char;
+            let from_rank = (b'1' + (from / 8) as u8) as char;
+            let to_file = (b'a' + (to % 8) as u8) as char;
+            let to_rank = (b'1' + (to / 8) as u8) as char;
+            println!("{}{}{}{} ({:?})", from_file, from_rank, to_file, to_rank, mv.move_type());
+        }
+    }
+
+    #[test]
+    fn test_perft_starting_position_depth_1() {
+        let pos = Position::default();
+        assert_eq!(pos.perft(1), 20);
+    }
+
+    #[test]
+    fn test_perft_starting_position_depth_2() {
+        let pos = Position::default();
+        assert_eq!(pos.perft(2), 400);
+    }
+
+    #[test]
+    fn test_perft_starting_position_depth_3() {
+        let pos = Position::default();
+        assert_eq!(pos.perft(3), 8902);
+    }
+
+    #[test]
+    fn test_perft_starting_position_depth_4() {
+        let pos = Position::default();
+        assert_eq!(pos.perft(4), 197281);
+    }
+
+    #[test]
+    fn test_perft_starting_position_depth_5() {
+        let pos = Position::default();
+        assert_eq!(pos.perft(5), 4865609);
+    }
+
+    // ==================== KIWIPETE PERFT TESTS ====================
+    // Position 2: Tests castling, en passant, promotions
+    // FEN: r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -
+
+    #[test]
+    fn test_perft_kiwipete_depth_1() {
+        let pos = Position::from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R");
+        assert_eq!(pos.perft(1), 48);
+    }
+
+    #[test]
+    fn test_perft_kiwipete_depth_2() {
+        let pos = Position::from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R");
+        assert_eq!(pos.perft(2), 2039);
+    }
+
+    #[test]
+    fn test_perft_kiwipete_depth_3() {
+        let pos = Position::from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R");
+        assert_eq!(pos.perft(3), 97862);
+    }
+
+    #[test]
+    fn test_perft_kiwipete_depth_4() {
+        let pos = Position::from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R");
+        assert_eq!(pos.perft(4), 4085603);
+    }
+
+    #[test]
+    fn test_perft_kiwipete_depth_5() {
+        let pos = Position::from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R");
+        assert_eq!(pos.perft(5), 193690690);
+    }
+
+    // ==================== ENDGAME POSITION PERFT TESTS ====================
+    // Position 3: Tests en passant and pawn promotion in endgame
+    // FEN: 8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - -
+
+    #[test]
+    fn test_perft_endgame_depth_1() {
+        let pos = Position::from_fen("8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8");
+        assert_eq!(pos.perft(1), 14);
+    }
+
+    #[test]
+    fn test_perft_endgame_depth_2() {
+        let pos = Position::from_fen("8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8");
+        assert_eq!(pos.perft(2), 191);
+    }
+
+    #[test]
+    fn test_perft_endgame_depth_3() {
+        let pos = Position::from_fen("8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8");
+        assert_eq!(pos.perft(3), 2812);
+    }
+
+    #[test]
+    fn test_perft_endgame_depth_4() {
+        let pos = Position::from_fen("8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8");
+        assert_eq!(pos.perft(4), 43238);
+    }
+
+    #[test]
+    fn test_perft_endgame_depth_5() {
+        let pos = Position::from_fen("8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8");
+        assert_eq!(pos.perft(5), 674624);
+    }
+
+    // ==================== COMPLEX POSITION WITH PROMOTIONS PERFT TESTS ====================
+    // Position 4: Tests promotion captures and underpromotion
+    // FEN: r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1
+
+    #[test]
+    fn test_perft_complex_promotions_depth_1() {
+        let pos = Position::from_fen("r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1");
+        assert_eq!(pos.perft(1), 6);
+    }
+
+    #[test]
+    fn test_perft_complex_promotions_depth_2() {
+        let pos = Position::from_fen("r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1");
+        assert_eq!(pos.perft(2), 264);
+    }
+
+    #[test]
+    fn test_perft_complex_promotions_depth_3() {
+        let pos = Position::from_fen("r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1");
+        assert_eq!(pos.perft(3), 9467);
+    }
+
+    #[test]
+    fn test_perft_complex_promotions_depth_4() {
+        let pos = Position::from_fen("r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1");
+        assert_eq!(pos.perft(4), 422333);
+    }
+
+    #[test]
+    fn test_perft_complex_promotions_depth_5() {
+        let pos = Position::from_fen("r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1");
+        assert_eq!(pos.perft(5), 15833292);
+    }
+
+    // ==================== MIDDLE GAME WITH PROMOTION PERFT TESTS ====================
+    // Position 5: Tests immediate promotion scenarios
+    // FEN: rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8
+
+    #[test]
+    fn test_perft_middle_game_promotion_depth_1() {
+        let pos = Position::from_fen("rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R");
+        assert_eq!(pos.perft(1), 44);
+    }
+
+    #[test]
+    fn test_perft_middle_game_promotion_depth_2() {
+        let pos = Position::from_fen("rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R");
+        assert_eq!(pos.perft(2), 1486);
+    }
+
+    #[test]
+    fn test_perft_middle_game_promotion_depth_3() {
+        let pos = Position::from_fen("rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R");
+        assert_eq!(pos.perft(3), 62379);
+    }
+
+    #[test]
+    fn test_perft_middle_game_promotion_depth_4() {
+        let pos = Position::from_fen("rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R");
+        assert_eq!(pos.perft(4), 2103487);
+    }
+
+    #[test]
+    fn test_perft_middle_game_promotion_depth_5() {
+        let pos = Position::from_fen("rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R");
+        assert_eq!(pos.perft(5), 89941194);
+    }
+
+    // ==================== SYMMETRICAL MIDDLE GAME PERFT TESTS ====================
+    // Position 6: Tests complex tactical positions with pins
+    // FEN: r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10
+
+    #[test]
+    fn test_perft_symmetrical_depth_1() {
+        let pos = Position::from_fen("r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1");
+        assert_eq!(pos.perft(1), 46);
+    }
+
+    #[test]
+    fn test_perft_symmetrical_depth_2() {
+        let pos = Position::from_fen("r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1");
+        assert_eq!(pos.perft(2), 2079);
+    }
+
+    #[test]
+    fn test_perft_symmetrical_depth_3() {
+        let pos = Position::from_fen("r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1");
+        assert_eq!(pos.perft(3), 89890);
+    }
+
+    #[test]
+    fn test_perft_symmetrical_depth_4() {
+        let pos = Position::from_fen("r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1");
+        assert_eq!(pos.perft(4), 3894594);
+    }
+
+    #[test]
+    fn test_perft_symmetrical_depth_5() {
+        let pos = Position::from_fen("r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1");
+        assert_eq!(pos.perft(5), 164075551);
+    }
+
+    // ==================== PROMOTION DEBUGGING TESTS ====================
+
+    #[cfg(test)]
+    mod promotion_debug {
+        use crate::game_repr::{Position, Move};
+        use chess::{Board, MoveGen};
+        use std::str::FromStr;
+
+        fn square_name(idx: usize) -> String {
+            let file = (b'a' + (idx % 8) as u8) as char;
+            let rank = (idx / 8) + 1;
+            format!("{}{}", file, rank)
+        }
+
+        #[test]
+        fn debug_middle_game_promotion() {
+            let fen = "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8";
+
+            // Our engine
+            let our_pos = Position::from_fen(fen);
+            let our_moves = our_pos.all_legal_moves();
+
+            // Reference (chess crate)
+            let ref_board = Board::from_str(fen).unwrap();
+            let ref_moves: Vec<_> = MoveGen::new_legal(&ref_board).collect();
+
+            println!("\n=== COMPARISON ===");
+            println!("Our count: {}", our_moves.len());
+            println!("Expected count: {}", ref_moves.len());
+
+            // Convert our moves to algebraic notation for comparison
+            let mut our_moves_str: Vec<String> = our_moves.iter()
+                .map(|m| format!("{}{}", square_name(m._from()), square_name(m._to())))
+                .collect();
+            our_moves_str.sort();
+
+            let mut ref_moves_str: Vec<String> = ref_moves.iter()
+                .map(|m| format!("{}", m))
+                .collect();
+            ref_moves_str.sort();
+
+            // Find missing moves
+            println!("\n=== MISSING MOVES (in reference but not in ours) ===");
+            for ref_mv in &ref_moves_str {
+                if !our_moves_str.contains(ref_mv) {
+                    println!("MISSING: {}", ref_mv);
+                }
+            }
+
+            // Find extra moves
+            println!("\n=== EXTRA MOVES (in ours but not in reference) ===");
+            for our_mv in &our_moves_str {
+                if !ref_moves_str.contains(our_mv) {
+                    println!("EXTRA: {}", our_mv);
+                }
+            }
+
+            // Print all our moves for reference
+            println!("\n=== ALL OUR MOVES ===");
+            for mv in &our_moves_str {
+                println!("{}", mv);
+            }
+
+            println!("\n=== ALL REFERENCE MOVES ===");
+            for mv in &ref_moves_str {
+                println!("{}", mv);
+            }
+        }
+
+        #[test]
+        fn debug_promotion_details() {
+            let fen = "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8";
+
+            // Our engine
+            let our_pos = Position::from_fen(fen);
+            let our_moves = our_pos.all_legal_moves();
+
+            println!("\n=== PROMOTION MOVE ANALYSIS ===");
+            println!("Position: {}", fen);
+            println!("White has a pawn on d7 that can promote by capturing to c8");
+            println!("");
+
+            // Check what moves we generate for the d7 pawn
+            // d7 = file 'd' (col 3), rank 7 (row 6) = 6*8 + 3 = 51
+            let d7_idx = 51;
+            let d7_moves = our_pos.legal_moves(d7_idx);
+
+            println!("Moves from d7 (index {}):", d7_idx);
+            for mv in &d7_moves {
+                println!("  {} -> {} ({:?})",
+                    square_name(mv._from()),
+                    square_name(mv._to()),
+                    mv.move_type());
+            }
+
+            println!("\n=== ISSUE IDENTIFIED ===");
+            println!("Expected: d7c8q, d7c8r, d7c8b, d7c8n (4 underpromotion options)");
+            println!("Actual: d7c8 (1 generic promotion)");
+            println!("");
+            println!("ROOT CAUSE:");
+            println!("The pawn.rs code converts moves to Promotion type when reaching rank 7/0,");
+            println!("but it does NOT generate separate moves for each promotion piece type.");
+            println!("");
+            println!("In chess, a pawn promotion should generate 4 different moves:");
+            println!("  1. Promote to Queen (q)");
+            println!("  2. Promote to Rook (r)");
+            println!("  3. Promote to Bishop (b)");
+            println!("  4. Promote to Knight (n)");
+            println!("");
+            println!("Currently, pawn.rs only generates ONE promotion move, which is why");
+            println!("we're missing 3 moves (we have 41 instead of 44).");
+        }
+
+        #[test]
+        fn debug_complex_promotions() {
+            let fen = "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1";
+
+            // Our engine
+            let our_pos = Position::from_fen(fen);
+            let our_moves = our_pos.all_legal_moves();
+
+            // Reference (chess crate)
+            let ref_board = Board::from_str(fen).unwrap();
+            let ref_moves: Vec<_> = MoveGen::new_legal(&ref_board).collect();
+
+            println!("\n=== COMPLEX PROMOTIONS POSITION ===");
+            println!("Our count: {}", our_moves.len());
+            println!("Expected count: {}", ref_moves.len());
+
+            // Convert our moves to algebraic notation for comparison
+            let mut our_moves_str: Vec<String> = our_moves.iter()
+                .map(|m| format!("{}{}", square_name(m._from()), square_name(m._to())))
+                .collect();
+            our_moves_str.sort();
+
+            let mut ref_moves_str: Vec<String> = ref_moves.iter()
+                .map(|m| format!("{}", m))
+                .collect();
+            ref_moves_str.sort();
+
+            // Find missing moves
+            println!("\n=== MISSING MOVES ===");
+            let mut missing_count = 0;
+            for ref_mv in &ref_moves_str {
+                if !our_moves_str.contains(ref_mv) {
+                    println!("MISSING: {}", ref_mv);
+                    missing_count += 1;
+                }
+            }
+            println!("Total missing: {}", missing_count);
+
+            // Find extra moves
+            println!("\n=== EXTRA MOVES ===");
+            let mut extra_count = 0;
+            for our_mv in &our_moves_str {
+                if !ref_moves_str.contains(our_mv) {
+                    println!("EXTRA: {}", our_mv);
+                    extra_count += 1;
+                }
+            }
+            println!("Total extra: {}", extra_count);
+        }
+
+        #[test]
+        fn debug_kiwipete() {
+            let fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+
+            // Our engine
+            let our_pos = Position::from_fen(fen);
+            let our_moves = our_pos.all_legal_moves();
+
+            // Reference (chess crate)
+            let ref_board = Board::from_str(fen).unwrap();
+            let ref_moves: Vec<_> = MoveGen::new_legal(&ref_board).collect();
+
+            println!("\n=== KIWIPETE POSITION (depth 1) ===");
+            println!("Our count: {}", our_moves.len());
+            println!("Expected count: {}", ref_moves.len());
+
+            if our_moves.len() == ref_moves.len() {
+                println!("CORRECT COUNT! Kiwipete depth 1 passes.");
+                return;
+            }
+
+            // Convert our moves to algebraic notation for comparison
+            let mut our_moves_str: Vec<String> = our_moves.iter()
+                .map(|m| format!("{}{}", square_name(m._from()), square_name(m._to())))
+                .collect();
+            our_moves_str.sort();
+
+            let mut ref_moves_str: Vec<String> = ref_moves.iter()
+                .map(|m| format!("{}", m))
+                .collect();
+            ref_moves_str.sort();
+
+            // Find missing moves
+            println!("\n=== MISSING MOVES ===");
+            for ref_mv in &ref_moves_str {
+                if !our_moves_str.contains(ref_mv) {
+                    println!("MISSING: {}", ref_mv);
+                }
+            }
+
+            // Find extra moves
+            println!("\n=== EXTRA MOVES ===");
+            for our_mv in &our_moves_str {
+                if !ref_moves_str.contains(our_mv) {
+                    println!("EXTRA: {}", our_mv);
+                }
             }
         }
     }

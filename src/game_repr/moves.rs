@@ -8,21 +8,38 @@
 // |        16 bits           |
 
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MoveType {
-    Normal    = 1 << 0,
-    EnPassant = 1 << 1,
-    Promotion = 1 << 2,
-    Castling  = 1 << 3,
+    Normal           = 1,
+    EnPassant        = 2,
+    PromotionQueen   = 4,
+    PromotionRook    = 5,
+    PromotionBishop  = 6,
+    PromotionKnight  = 7,
+    Castling         = 8,
+}
+
+impl MoveType {
+    pub fn is_promotion(&self) -> bool {
+        matches!(self,
+            MoveType::PromotionQueen |
+            MoveType::PromotionRook |
+            MoveType::PromotionBishop |
+            MoveType::PromotionKnight
+        )
+    }
 }
 
 impl From<u16> for MoveType {
     fn from(value: u16) -> Self {
         match value {
-            x if x == MoveType::Normal as u16    => MoveType::Normal,
-            x if x == MoveType::EnPassant as u16 => MoveType::EnPassant,
-            x if x == MoveType::Promotion as u16 => MoveType::Promotion,
-            x if x == MoveType::Castling as u16  => MoveType::Castling,
+            1 => MoveType::Normal,
+            2 => MoveType::EnPassant,
+            4 => MoveType::PromotionQueen,
+            5 => MoveType::PromotionRook,
+            6 => MoveType::PromotionBishop,
+            7 => MoveType::PromotionKnight,
+            8 => MoveType::Castling,
             _ => panic!("Invalid value for MoveType: {}", value),
         }
     }
