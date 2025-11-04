@@ -1,88 +1,47 @@
 use crate::game_repr::{MoveType, Move};
+use crate::game_repr::bitboards::{pop_lsb, bitscan_forward, tables::*};
 
-use super::super::{
-    piece::{Piece, Type},
-    position::Position
-};
+use super::super::position::Position;
 
 impl Position {
     pub fn rook_moves(&self, idx: usize, include_friendly: bool) -> Vec<Move> {
-        // n
         let mut moves = Vec::with_capacity(14);  // Rooks have max 14 moves (7 per direction)
-        let mut p_idx = idx;
-        while p_idx / 8 != 7 {
-            p_idx += 8;
-            match self.position[p_idx] {
-                Piece { piece_type, .. } if piece_type == Type::None => moves.push(Move::new(idx as u8, p_idx as u8, MoveType::Normal)),
-                p if p.color() != self.position[idx].color() => {
-                    moves.push(Move::new(idx as u8, p_idx as u8, MoveType::Normal));
-                    break;
-                }
-                p if include_friendly && p.color() == self.position[idx].color() => {
-                    moves.push(Move::new(idx as u8, p_idx as u8, MoveType::Normal));
-                    break;
-                }
-                _ => break,
-            }
-        }
+        let moving_piece = self.position[idx];
+        let occupied = self.bitboards.all_occupied();
+        let friendly_pieces = self.bitboards.occupied_by_color(moving_piece.color);
 
-        // s
-        p_idx = idx;
-        while p_idx / 8 != 0 {
-            p_idx -= 8;
-            match self.position[p_idx] {
-                Piece { piece_type, .. } if piece_type == Type::None => moves.push(Move::new(idx as u8, p_idx as u8, MoveType::Normal)),
-                p if p.color() != self.position[idx].color() => {
-                    moves.push(Move::new(idx as u8, p_idx as u8, MoveType::Normal));
-                    break;
-                }
-                p if include_friendly && p.color() == self.position[idx].color() => {
-                    moves.push(Move::new(idx as u8, p_idx as u8, MoveType::Normal));
-                    break;
-                }
-                _ => break,
-            }
-        }
+        // Process each orthogonal direction (N, S, E, W)
+        for &direction in &[NORTH, SOUTH, EAST, WEST] {
+            let mut ray = RAYS[direction][idx];
 
-        // e
-        p_idx = idx;
-        while p_idx % 8 != 7 {
-            p_idx += 1;
-            match self.position[p_idx] {
-                Piece {
-                    piece_type: Type::None,
-                    ..
-                } => moves.push(Move::new(idx as u8, p_idx as u8, MoveType::Normal)),
-                p if p.color() != self.position[idx].color() => {
-                    moves.push(Move::new(idx as u8, p_idx as u8, MoveType::Normal));
-                    break;
-                }
-                p if include_friendly && p.color() == self.position[idx].color() => {
-                    moves.push(Move::new(idx as u8, p_idx as u8, MoveType::Normal));
-                    break;
-                }
-                _ => break,
-            }
-        }
+            // Find first blocker in this direction
+            let blockers = ray & occupied;
+            if blockers != 0 {
+                let blocker_sq = if direction == NORTH || direction == EAST {
+                    bitscan_forward(blockers)  // First blocker going forward
+                } else {
+                    63 - blockers.leading_zeros() as usize  // First blocker going backward
+                };
 
-        // w
-        p_idx = idx;
-        while p_idx % 8 != 0 {
-            p_idx -= 1;
-            match self.position[p_idx] {
-                Piece {
-                    piece_type: Type::None,
-                    ..
-                } => moves.push(Move::new(idx as u8, p_idx as u8, MoveType::Normal)),
-                p if p.color() != self.position[idx].color() => {
-                    moves.push(Move::new(idx as u8, p_idx as u8, MoveType::Normal));
-                    break;
+                // Mask out squares beyond the blocker
+                ray &= !(RAYS[direction][blocker_sq]);
+
+                // Include the blocker square if it's an enemy piece (capture) or if include_friendly
+                let blocker_piece = self.position[blocker_sq];
+                if blocker_piece.color != moving_piece.color || include_friendly {
+                    ray |= 1u64 << blocker_sq;
                 }
-                p if include_friendly && p.color() == self.position[idx].color() => {
-                    moves.push(Move::new(idx as u8, p_idx as u8, MoveType::Normal));
-                    break;
-                }
-                _ => break,
+            }
+
+            // Remove friendly pieces unless include_friendly is true
+            if !include_friendly {
+                ray &= !friendly_pieces;
+            }
+
+            // Generate moves for each target square in this ray
+            while ray != 0 {
+                let target_sq = pop_lsb(&mut ray);
+                moves.push(Move::new(idx as u8, target_sq as u8, MoveType::Normal));
             }
         }
 

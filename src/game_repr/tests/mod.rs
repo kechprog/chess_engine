@@ -4,7 +4,9 @@ use super::*;
 
 /// Helper function to create an empty board
 pub fn empty_board() -> Position {
+    use crate::game_repr::bitboards::Bitboards;
     Position {
+        bitboards: Bitboards::empty(),
         position: [Piece::default(); 64],
         prev_moves: Vec::new(),
         castling_cond: [false; 6],
@@ -14,6 +16,10 @@ pub fn empty_board() -> Position {
 /// Helper function to place a piece
 pub fn place_piece(pos: &mut Position, idx: usize, piece: Piece) {
     pos.position[idx] = piece;
+    // Also update bitboards
+    if piece.piece_type != Type::None {
+        pos.bitboards.add_piece(piece.color, piece.piece_type, idx);
+    }
 }
 
 /// Helper function to check if a move exists in the move list

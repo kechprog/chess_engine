@@ -1,4 +1,5 @@
 use crate::game_repr::{MoveType, Move, Color};
+use crate::game_repr::bitboards::{pop_lsb, tables::KING_ATTACKS};
 
 use super::super::{
     piece::Type,
@@ -8,36 +9,22 @@ use super::super::{
 impl Position {
     pub fn king_moves(&self, idx: usize) -> Vec<Move> {
         let king_color = self.position[idx].color;
-        let king_x = (idx % 8) as i64;
-        let king_y = (idx / 8) as i64;
 
-        let mut moves: Vec<Move> = [
-            idx as i64 + 1,
-            idx as i64 - 1,
-            idx as i64 + 8,
-            idx as i64 - 8,
-            idx as i64 + 7,
-            idx as i64 - 7,
-            idx as i64 + 9,
-            idx as i64 - 9,
-        ]
-        .iter()
-        .filter(|&&x| x < 64 && x >= 0)
-        .filter(|&&target_idx| {
-            // Prevent wrapping around board edges
-            let target_x = (target_idx % 8) as i64;
-            let target_y = (target_idx / 8) as i64;
-            let dx = (target_x - king_x).abs();
-            let dy = (target_y - king_y).abs();
-            dx <= 1 && dy <= 1
-        })
-        .filter(|&&target_idx| {
-            // Can't capture own pieces
-            let target_piece = self.position[target_idx as usize];
-            !(target_piece.color == king_color && target_piece.piece_type != Type::None)
-        })
-        .map(move |&x| Move::new(idx as u8, x as u8, MoveType::Normal))
-        .collect();
+        // Get all squares the king can attack using the precomputed table
+        let mut attacks = KING_ATTACKS[idx];
+
+        // Get friendly pieces to avoid capturing them
+        let friendly_pieces = self.bitboards.occupied_by_color(king_color);
+
+        // Remove friendly pieces from attacks
+        attacks &= !friendly_pieces;
+
+        // Generate moves for each target square
+        let mut moves = Vec::with_capacity(8);
+        while attacks != 0 {
+            let target_sq = pop_lsb(&mut attacks);
+            moves.push(Move::new(idx as u8, target_sq as u8, MoveType::Normal));
+        }
 
         // Add castling moves
         // Check if king is in its starting position
