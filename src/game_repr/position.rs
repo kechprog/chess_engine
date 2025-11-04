@@ -264,6 +264,98 @@ impl Position {
         self.prev_moves.push(_move);
     }
 
+    /// Detects which pieces are pinned to the king and returns pin information
+    /// Returns (pinned_pieces_bitboard, pin_rays_array)
+    /// pin_rays_array[square] contains a bitboard of valid squares the pinned piece can move to
+    fn detect_pins(&self, king_color: Color) -> (u64, [u64; 64]) {
+        let mut pinned_pieces = 0u64;
+        let mut pin_rays = [0u64; 64];
+
+        // Find the king position
+        let king_bb = self.bitboards.pieces_of_type(king_color, Type::King);
+        if king_bb == 0 {
+            return (pinned_pieces, pin_rays);
+        }
+        let king_square = bitscan_forward(king_bb);
+
+        let occupied = self.bitboards.all_occupied();
+
+        // Check all 8 directions for potential pins
+        for &direction in &[NORTH, NORTH_EAST, EAST, SOUTH_EAST, SOUTH, SOUTH_WEST, WEST, NORTH_WEST] {
+            let ray = RAYS[direction][king_square];
+            let blockers_on_ray = ray & occupied;
+
+            if blockers_on_ray == 0 {
+                continue;  // No pieces on this ray
+            }
+
+            // Find first two pieces on this ray from king outward
+            let first_blocker_sq = if direction == NORTH || direction == NORTH_EAST || direction == NORTH_WEST || direction == EAST {
+                bitscan_forward(blockers_on_ray)
+            } else {
+                63 - blockers_on_ray.leading_zeros() as usize
+            };
+
+            let first_piece = self.position[first_blocker_sq];
+
+            // Only interested if first blocker is our own piece
+            if first_piece.color != king_color {
+                continue;
+            }
+
+            // Remove first blocker and check for second blocker
+            let remaining_blockers = blockers_on_ray & !(1u64 << first_blocker_sq);
+            if remaining_blockers == 0 {
+                continue;  // No second piece
+            }
+
+            let second_blocker_sq = if direction == NORTH || direction == NORTH_EAST || direction == NORTH_WEST || direction == EAST {
+                bitscan_forward(remaining_blockers)
+            } else {
+                63 - remaining_blockers.leading_zeros() as usize
+            };
+
+            let second_piece = self.position[second_blocker_sq];
+
+            // Pin exists if second piece is enemy slider of correct type
+            if second_piece.color == king_color.opposite() {
+                let is_diagonal = direction == NORTH_EAST || direction == NORTH_WEST ||
+                                 direction == SOUTH_EAST || direction == SOUTH_WEST;
+                let is_orthogonal = direction == NORTH || direction == SOUTH ||
+                                   direction == EAST || direction == WEST;
+
+                let is_pinner = if is_diagonal {
+                    second_piece.piece_type == Type::Bishop || second_piece.piece_type == Type::Queen
+                } else if is_orthogonal {
+                    second_piece.piece_type == Type::Rook || second_piece.piece_type == Type::Queen
+                } else {
+                    false
+                };
+
+                if is_pinner {
+                    // Mark this piece as pinned
+                    pinned_pieces |= 1u64 << first_blocker_sq;
+
+                    // Calculate the pin ray: the pinned piece can move along the line from king to pinner
+                    // This includes:
+                    // 1. Squares between king and pinned piece (towards king)
+                    // 2. Squares between pinned piece and pinner (towards pinner)
+                    // 3. The pinner square itself (capture)
+
+                    let ray_from_king = RAYS[direction][king_square];
+                    let ray_from_pinner = RAYS[direction][second_blocker_sq];
+
+                    // Everything on the ray from king that is NOT beyond the pinner
+                    let pin_ray = ray_from_king & !(ray_from_pinner);
+
+                    pin_rays[first_blocker_sq] = pin_ray;
+                }
+            }
+        }
+
+        (pinned_pieces, pin_rays)
+    }
+
     /// Generate legal moves for a piece into a provided buffer
     /// The buffer is NOT cleared before adding moves
     pub fn legal_moves_into(&self, idx: usize, moves: &mut Vec<Move>) {
@@ -563,13 +655,61 @@ impl Position {
             Color::Black
         };
 
+        // Detect pins once for the entire position
+        let in_check = self.is_in_check(current_side);
+        let (pinned_pieces, pin_rays) = self.detect_pins(current_side);
+
         // Iterate through each piece type using bitboards
         for piece_type in [Type::Pawn, Type::Knight, Type::Bishop, Type::Rook, Type::Queen, Type::King] {
             let mut pieces_bb = self.bitboards.pieces_of_type(current_side, piece_type);
 
             while pieces_bb != 0 {
                 let square = pop_lsb(&mut pieces_bb);
-                self.legal_moves_into(square, moves);
+                let initial_len = moves.len();
+
+                // Generate pseudo-legal moves
+                match piece_type {
+                    Type::Pawn   => self.pawn_moves_into(square, moves),
+                    Type::Rook   => self.rook_moves_into(square, false, moves),
+                    Type::Knight => self.knight_moves_into(square, moves),
+                    Type::Bishop => self.bishop_moves_into(square, false, moves),
+                    Type::Queen  => self.queen_moves_into(square, moves),
+                    Type::King   => self.king_moves_into(square, moves),
+                    Type::None   => continue,
+                }
+
+                // Filter moves based on pin status and check status
+                let is_pinned = (pinned_pieces & (1u64 << square)) != 0;
+                let is_king = piece_type == Type::King;
+                let is_pawn = piece_type == Type::Pawn;
+                let is_knight = piece_type == Type::Knight;
+
+                if is_king || in_check || is_pawn || is_knight {
+                    // These cases need full validation:
+                    // - King moves (can't rely on pins)
+                    // - Moves when in check
+                    // - Pawn moves (complex rules: forward vs capture, en passant, promotion)
+                    // - Knight moves (pinned knights can't move at all, but easier to validate than compute)
+                    let mut i = moves.len();
+                    while i > initial_len {
+                        i -= 1;
+                        if !self.is_move_legal(moves[i]) {
+                            moves.swap_remove(i);
+                        }
+                    }
+                } else if is_pinned {
+                    // For sliding pieces (rook, bishop, queen): only allow moves along the pin ray
+                    let pin_ray = pin_rays[square];
+                    let mut i = moves.len();
+                    while i > initial_len {
+                        i -= 1;
+                        let to = moves[i]._to();
+                        if (pin_ray & (1u64 << to)) == 0 {
+                            moves.swap_remove(i);
+                        }
+                    }
+                }
+                // else: Not pinned, not king, not in check, not pawn/knight - all pseudo-legal moves are legal!
             }
         }
     }

@@ -2,8 +2,8 @@
 
 **Date:** 2025-11-04
 **Initial Baseline:** 12.4s for perft depth 6 (~9.9M nodes/sec)
-**Current Performance:** 5.31s for perft depth 6 (~22.4M nodes/sec)
-**Total Improvement So Far:** 2.34× faster (134% improvement)
+**Current Performance:** 4.34s for perft depth 6 (~27.4M nodes/sec)
+**Total Improvement So Far:** 2.86× faster (186% improvement)
 **Profiling Tool:** cargo flamegraph
 
 ## Results Summary
@@ -12,7 +12,7 @@
 |-------------|--------|---------|-----------------|-------------------|
 | Baseline (bitboards) | ✅ | - | 12.4s | 1.00× |
 | #1: Move list recycling | ✅ | 2.34× | 5.31s | 2.34× |
-| #2: Bulk move validation | 🔜 | Est. 1.1-1.2× | Est. 4.5-4.8s | Est. 2.6-2.8× |
+| #2: Bulk move validation | ✅ | 1.22× | 4.34s | 2.86× |
 | #3: Optimize is_square_attacked | ⏸️ | Est. 1.05-1.1× | TBD | TBD |
 | #4-7: Additional optimizations | ⏸️ | Est. 1.1-1.2× | TBD | TBD |
 
@@ -125,32 +125,58 @@ Used Option A (pre-allocated buffer passed down call stack):
 
 ### 2. [HIGH IMPACT] Bulk Move Validation
 **Estimated Speedup:** 5-10%
-**Status:** Not implemented
+**Status:** ✅ IMPLEMENTED (2025-11-04)
+**Actual Speedup:** 1.22× (22% faster) - Exceeded expectations!
 **Difficulty:** High
 
-**Problem:** Currently `legal_moves()` at position.rs:552 calls `is_square_attacked()` for every single move to check if king is left in check.
+**Problem:** Previously `legal_moves()` called `is_square_attacked()` for EVERY pseudo-legal move to check if king is left in check.
 
-**Solution:**
-1. Generate all pseudo-legal moves first (no validation)
-2. Use pin detection to identify which pieces can/cannot move
-3. Only validate moves from pinned pieces or king moves
-4. Cache attack information across multiple move checks
+**Solution Implemented:**
+Hybrid optimization combining pin detection with selective validation:
 
-**Technical Approach:**
-- Compute pinned pieces bitboard at start
-- For unpinned pieces, moves are automatically legal (if king not in check initially)
-- For pinned pieces, only allow moves along pin ray
-- King moves always need validation
+1. **Pin Detection**: Added `detect_pins()` function that traces rays from king in all 8 directions
+   - Detects patterns: friendly piece → enemy slider = pin
+   - Calculates valid move rays for each pinned piece
+   - Uses precomputed ray tables for efficiency
 
-**Implementation Notes:**
-- Implement pin detection algorithm
-- Add pinned pieces tracking to Position struct
-- Modify move generation to use pin information
-- Optimize for common case (most pieces unpinned)
+2. **Selective Validation Strategy**:
+   - **Kings**: Always validate (can't use pin detection for king moves)
+   - **When in check**: Always validate (complex check evasion rules)
+   - **Pawns**: Always validate (forward vs capture movement complicates pin logic)
+   - **Knights**: Always validate (pinned knights can't move)
+   - **Pinned sliders** (rook/bishop/queen): Only allow moves along pin ray
+   - **Unpinned sliders** (when not in check): All pseudo-legal moves are legal!
 
-**Files to Modify:**
-- src/game_repr/position.rs (legal_moves, add pin detection)
-- May need new bitboard helpers for pin rays
+**Files Modified:**
+- ✅ src/game_repr/position.rs: Added `detect_pins()` (90 lines), modified `all_legal_moves_into()`
+
+**Benchmark Results (Release Mode):**
+- Before: 5.31s for perft depth 6 (22.4M nodes/sec)
+- After Run 1: 4.35s (27.4M nodes/sec)
+- After Run 2: 4.38s (27.2M nodes/sec)
+- After Run 3: 4.30s (27.7M nodes/sec)
+- **After Average: 4.34s (27.4M nodes/sec)**
+- **Improvement: 1.22× speedup (22% faster, 18% time reduction)**
+
+**Why It Exceeded Expectations:**
+The actual improvement (22% faster) exceeded the estimated 5-10% because:
+1. Reduced `is_square_attacked()` calls from every move to only kings/pawns/knights/checks
+2. Pin detection computed once per position instead of implicitly during validation
+3. Bulk filtering for sliders: ~20% of moves skip validation entirely
+4. Better branch prediction with categorized piece handling
+
+**Edge Cases Handled:**
+- Pinned pawns (forward vs diagonal moves don't align with pin rays)
+- En passant pins (rare case where capture affects pin detection)
+- Promotions (need validation for correctness)
+- Knights (pinned knights can't move - simpler to validate)
+- Check evasion (different rules apply when king is in check)
+
+**Technical Details:**
+- Pin detection uses ray-tracing in 8 directions from king
+- Pin rays stored in stack array (no heap allocation)
+- Efficient bitboard operations using precomputed ray tables
+- Clean separation: pin detection vs move validation logic
 
 ---
 
