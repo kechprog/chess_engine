@@ -1,3 +1,4 @@
+use crate::agent::player::GameResult;
 use crate::game_repr::{Color, Position};
 use winit::dpi::PhysicalPosition;
 
@@ -30,4 +31,29 @@ pub trait Renderer {
     /// # Arguments
     /// * `new_size` - New window dimensions in pixels
     fn resize(&mut self, new_size: (u32, u32));
+
+    /// Draw the menu screen
+    ///
+    /// # Arguments
+    /// * `show_coming_soon` - If true, display "Coming Soon!" overlay instead of menu buttons
+    fn draw_menu(&mut self, show_coming_soon: bool);
+
+    /// Check if a screen coordinate is within a button's bounds
+    ///
+    /// # Arguments
+    /// * `coords` - Physical position in pixels
+    /// * `button_index` - Which button to check (0 = PvP, 1 = PvAI)
+    ///
+    /// # Returns
+    /// * `true` if the coordinate is within the button bounds
+    fn is_coord_in_button(&self, coords: PhysicalPosition<f64>, button_index: usize) -> bool;
+
+    /// Draw the game end overlay
+    ///
+    /// # Arguments
+    /// * `position` - The current board state (to draw underneath)
+    /// * `selected_tile` - Optional tile index (0-63) that is currently selected
+    /// * `pov` - Point of view (White or Black) - determines board orientation
+    /// * `result` - The game result to display
+    fn draw_game_end(&mut self, position: &Position, selected_tile: Option<u8>, pov: Color, result: GameResult);
 }

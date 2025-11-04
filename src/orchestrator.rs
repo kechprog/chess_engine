@@ -102,6 +102,14 @@ pub struct Orchestrator {
     /// Whether a game is currently in progress
     /// false in Menu mode or after game end
     game_active: bool,
+
+    /// FEN string for starting position (used when starting a new game)
+    /// Empty string means use default starting position
+    starting_fen: String,
+
+    /// Result of the game if it has ended
+    /// None if game is in progress or in menu
+    game_result: Option<GameResult>,
 }
 
 impl Orchestrator {
@@ -138,6 +146,8 @@ impl Orchestrator {
             players: None,
             current_turn: Color::White,
             game_active: false,
+            starting_fen: String::new(),
+            game_result: None,
         }
     }
 
@@ -160,7 +170,19 @@ impl Orchestrator {
     pub fn handle_event(&mut self, event: WindowEvent) {
         match event {
             WindowEvent::RedrawRequested => {
-                self.board.borrow_mut().draw();
+                if self.game_mode == GameMode::Menu {
+                    // Draw menu screen
+                    self.board.borrow_mut().draw_menu(false);
+                } else if self.game_mode == GameMode::PvAI && !self.game_active {
+                    // Show "Coming Soon!" for PvAI
+                    self.board.borrow_mut().draw_menu(true);
+                } else if let Some(result) = self.game_result {
+                    // Game has ended - draw board with game end overlay
+                    self.board.borrow_mut().draw_game_end(result);
+                } else {
+                    // Draw normal game board
+                    self.board.borrow_mut().draw();
+                }
             }
 
             WindowEvent::Resized(_new_size) => {
@@ -172,8 +194,67 @@ impl Orchestrator {
                 // Event loop will handle actual close
             }
 
+            WindowEvent::MouseInput { state, button, .. } => {
+                use winit::event::{ElementState, MouseButton};
+
+                // Handle menu button clicks
+                if self.game_mode == GameMode::Menu && state == ElementState::Pressed && button == MouseButton::Left {
+                    let board = self.board.borrow();
+                    let mouse_pos = board.mouse_pos();
+
+                    if board.is_coord_in_button(mouse_pos, 0) {
+                        // PvP button clicked
+                        drop(board);
+                        self.set_game_mode(GameMode::PvP);
+                        self.start_game();
+                    } else if board.is_coord_in_button(mouse_pos, 1) {
+                        // PvAI button clicked - show "Coming Soon!"
+                        drop(board);
+                        self.set_game_mode(GameMode::PvAI);
+                        self.window.request_redraw();
+                    }
+                } else if self.game_mode == GameMode::PvAI && !self.game_active && state == ElementState::Pressed {
+                    // Click anywhere on "Coming Soon!" screen to return to menu
+                    self.return_to_menu();
+                } else if self.game_result.is_some() && state == ElementState::Pressed {
+                    // Click anywhere on game end overlay to return to menu
+                    self.return_to_menu();
+                } else if self.game_active {
+                    // Delegate to current player when game is active
+                    if let Some((player1, player2)) = &mut self.players {
+                        let current_player = match self.current_turn {
+                            Color::White => player1,
+                            Color::Black => player2,
+                        };
+                        current_player.handle_event(&event);
+
+                        // Request redraw after handling event to show UI updates
+                        self.window.request_redraw();
+
+                        // Poll for move after each event
+                        self.poll_current_player();
+                    }
+                }
+            }
+
+            WindowEvent::CursorMoved { position, .. } => {
+                // Track mouse position for menu button detection
+                self.board.borrow_mut().update_mouse_pos(position);
+
+                // Delegate to player if game is active
+                if self.game_active {
+                    if let Some((player1, player2)) = &mut self.players {
+                        let current_player = match self.current_turn {
+                            Color::White => player1,
+                            Color::Black => player2,
+                        };
+                        current_player.handle_event(&event);
+                    }
+                }
+            }
+
             _ => {
-                // Delegate input events to current player when game is active
+                // Delegate other input events to current player when game is active
                 if self.game_active {
                     if let Some((player1, player2)) = &mut self.players {
                         let current_player = match self.current_turn {
@@ -269,6 +350,43 @@ impl Orchestrator {
         self.window.request_redraw();
     }
 
+    /// Get a reference to the FEN string for starting position.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the FEN string. Empty string means use default position.
+    pub fn starting_fen(&self) -> &str {
+        &self.starting_fen
+    }
+
+    /// Set the FEN string for starting position.
+    ///
+    /// This FEN will be used when start_game() is called.
+    ///
+    /// # Arguments
+    ///
+    /// * `fen` - FEN string describing the starting position, or empty for default
+    pub fn set_starting_fen(&mut self, fen: String) {
+        self.starting_fen = fen;
+    }
+
+    /// Get a mutable reference to the starting FEN string.
+    ///
+    /// Used for direct manipulation (e.g., text input).
+    pub fn starting_fen_mut(&mut self) -> &mut String {
+        &mut self.starting_fen
+    }
+
+    /// Get whether the game is currently active.
+    pub fn is_game_active(&self) -> bool {
+        self.game_active
+    }
+
+    /// Get the current game mode.
+    pub fn game_mode(&self) -> GameMode {
+        self.game_mode
+    }
+
     /// Start a game with the current game mode.
     ///
     /// Creates the appropriate player instances based on [`game_mode`](Self::game_mode)
@@ -322,11 +440,12 @@ impl Orchestrator {
         self.current_turn = Color::White;
         self.game_active = true;
 
-        // Set initial POV to White
-        self.board.borrow_mut().set_pov(Color::White);
-
-        // TODO: Reset board to starting position
-        // self.board.borrow_mut().reset();
+        // Reset board to starting position (using FEN if provided)
+        {
+            let mut board = self.board.borrow_mut();
+            board.reset_position(&self.starting_fen);
+            board.set_pov(Color::White);
+        }
 
         // Request initial redraw
         self.window.request_redraw();
@@ -485,11 +604,13 @@ impl Orchestrator {
     /// - Sets `game_mode` to `Menu`
     /// - Sets `game_active` to false
     /// - Clears `players` (dropping player instances)
+    /// - Clears `game_result`
     /// - Requests window redraw to show menu UI
     pub fn return_to_menu(&mut self) {
         self.game_mode = GameMode::Menu;
         self.game_active = false;
         self.players = None;
+        self.game_result = None;
 
         self.board.borrow_mut().set_selected_tile(None);
 
@@ -503,6 +624,7 @@ impl Orchestrator {
     /// * `result` - The final result of the game
     fn handle_game_end(&mut self, result: GameResult) {
         self.game_active = false;
+        self.game_result = Some(result);
 
         // Notify both players of the result
         if let Some((ref mut white, ref mut black)) = self.players {
@@ -510,8 +632,7 @@ impl Orchestrator {
             black.game_ended(result);
         }
 
-        // TODO: Display result UI or return to menu after delay
-        // For now, just return to menu immediately
-        self.return_to_menu();
+        // Trigger redraw to show game end overlay
+        self.window.request_redraw();
     }
 }

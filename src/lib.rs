@@ -85,12 +85,7 @@ mod wasm {
                 UserEvent::RendererReady(renderer) => {
                     if let Some(window) = &self.window {
                         // Create orchestrator with the renderer
-                        let mut orchestrator = Orchestrator::new(window.clone(), *renderer);
-
-                        // TODO: Remove this auto-start once menu UI is implemented
-                        // Automatically start PvP game for testing
-                        orchestrator.set_game_mode(GameMode::PvP);
-                        orchestrator.start_game();
+                        let orchestrator = Orchestrator::new(window.clone(), *renderer);
 
                         self.orchestrator = Some(orchestrator);
                         self.initializing = false;

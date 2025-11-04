@@ -1,3 +1,4 @@
+use crate::agent::player::GameResult;
 use crate::assets;
 use crate::game_repr::{Color, Piece, Position, Type};
 use crate::renderer::Renderer;
@@ -6,6 +7,10 @@ use std::sync::Arc;
 use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalPosition;
 use winit::window::Window;
+use glyphon::{FontSystem, SwashCache, TextAtlas, TextRenderer, TextArea, Buffer, Metrics, Family, Attrs, Cache, Viewport};
+
+// Embed font at compile time for WASM compatibility
+const FONT_DATA: &[u8] = include_bytes!("../assets/Roboto-Regular.ttf");
 
 // WGSL Shaders
 
@@ -171,6 +176,14 @@ pub struct WgpuRenderer {
 
     board_dimensions: (f32, f32),
     window_size: (u32, u32),
+
+    // Text rendering components
+    font_system: FontSystem,
+    swash_cache: SwashCache,
+    cache: Cache,
+    text_atlas: TextAtlas,
+    text_renderer: TextRenderer,
+    viewport: Viewport,
 }
 
 impl WgpuRenderer {
@@ -428,6 +441,16 @@ impl WgpuRenderer {
             ..Default::default()
         });
 
+        // Initialize text rendering components with embedded font
+        let mut font_system = FontSystem::new();
+        // Load embedded font data for WASM compatibility (system fonts not available in WASM)
+        font_system.db_mut().load_font_data(FONT_DATA.to_vec());
+        let swash_cache = SwashCache::new();
+        let cache = Cache::new(&device);
+        let mut text_atlas = TextAtlas::new(&device, &queue, &cache, surface_format);
+        let text_renderer = TextRenderer::new(&mut text_atlas, &device, wgpu::MultisampleState::default(), None);
+        let viewport = Viewport::new(&device, &cache);
+
         Self {
             surface,
             device,
@@ -443,6 +466,12 @@ impl WgpuRenderer {
             sampler,
             board_dimensions: (0.0, 0.0),
             window_size: (window_size.width, window_size.height),
+            font_system,
+            swash_cache,
+            cache,
+            text_atlas,
+            text_renderer,
+            viewport,
         }
     }
 
@@ -862,6 +891,428 @@ impl Renderer for WgpuRenderer {
             self.config.width = new_size.0;
             self.config.height = new_size.1;
             self.surface.configure(&self.device, &self.config);
+            self.text_atlas.trim();
         }
+    }
+
+    fn draw_menu(&mut self, show_coming_soon: bool) {
+        let output = self.surface.get_current_texture().unwrap();
+        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Menu Render Encoder"),
+        });
+
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Menu Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.15,
+                            g: 0.15,
+                            b: 0.18,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
+
+            render_pass.set_pipeline(&self.tile_pipeline);
+            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+
+            if show_coming_soon {
+                // Draw "Coming Soon!" overlay - large centered rectangle
+                let vertices = [
+                    TileVertex { position: [-0.6, 0.3], color: [0.84, 0.72, 0.56, 1.0] },
+                    TileVertex { position: [0.6, 0.3], color: [0.84, 0.72, 0.56, 1.0] },
+                    TileVertex { position: [-0.6, -0.3], color: [0.84, 0.72, 0.56, 1.0] },
+                    TileVertex { position: [0.6, -0.3], color: [0.84, 0.72, 0.56, 1.0] },
+                ];
+
+                let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Coming Soon Vertex Buffer"),
+                    contents: bytemuck::cast_slice(&vertices),
+                    usage: wgpu::BufferUsages::VERTEX,
+                });
+
+                render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+                render_pass.draw_indexed(0..6, 0, 0..1);
+            } else {
+                // Draw two buttons: PvP and PvAI
+                // PvP button (top) - greenish
+                let pvp_vertices = [
+                    TileVertex { position: [-0.5, 0.3], color: [0.5, 0.7, 0.5, 1.0] },
+                    TileVertex { position: [0.5, 0.3], color: [0.5, 0.7, 0.5, 1.0] },
+                    TileVertex { position: [-0.5, 0.1], color: [0.5, 0.7, 0.5, 1.0] },
+                    TileVertex { position: [0.5, 0.1], color: [0.5, 0.7, 0.5, 1.0] },
+                ];
+
+                let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("PvP Button Vertex Buffer"),
+                    contents: bytemuck::cast_slice(&pvp_vertices),
+                    usage: wgpu::BufferUsages::VERTEX,
+                });
+
+                render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+                render_pass.draw_indexed(0..6, 0, 0..1);
+
+                // PvAI button (bottom) - blueish
+                let pvai_vertices = [
+                    TileVertex { position: [-0.5, -0.1], color: [0.5, 0.6, 0.8, 1.0] },
+                    TileVertex { position: [0.5, -0.1], color: [0.5, 0.6, 0.8, 1.0] },
+                    TileVertex { position: [-0.5, -0.3], color: [0.5, 0.6, 0.8, 1.0] },
+                    TileVertex { position: [0.5, -0.3], color: [0.5, 0.6, 0.8, 1.0] },
+                ];
+
+                let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("PvAI Button Vertex Buffer"),
+                    contents: bytemuck::cast_slice(&pvai_vertices),
+                    usage: wgpu::BufferUsages::VERTEX,
+                });
+
+                render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+                render_pass.draw_indexed(0..6, 0, 0..1);
+            }
+        }
+
+        // Prepare text rendering
+        let viewport_width = self.window_size.0 as f32;
+        let viewport_height = self.window_size.1 as f32;
+
+        // Update viewport with current window size
+        self.viewport.update(&self.queue, glyphon::Resolution {
+            width: self.window_size.0,
+            height: self.window_size.1,
+        });
+
+        // Create text buffers and areas
+        if show_coming_soon {
+            // "Coming Soon!" text - centered on golden overlay
+            let mut coming_soon_buffer = Buffer::new(&mut self.font_system, Metrics::new(48.0, 60.0));
+            coming_soon_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+            coming_soon_buffer.set_text(&mut self.font_system, "Coming Soon!", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+
+            // Calculate text position to center it on the overlay
+            // Overlay is at [-0.6, 0.3] to [0.6, -0.3] in NDC
+            // Convert NDC to pixel coordinates
+            let overlay_center_x = viewport_width / 2.0;
+            let overlay_center_y = viewport_height / 2.0;
+
+            // Get text width to center it
+            let layout = coming_soon_buffer.layout_runs();
+            let mut text_width: f32 = 0.0;
+            for run in layout {
+                text_width = text_width.max(run.line_w);
+            }
+
+            let text_x = (overlay_center_x - text_width / 2.0).max(0.0);
+            let text_y = (overlay_center_y - 30.0).max(0.0);
+
+            let text_area = TextArea {
+                buffer: &coming_soon_buffer,
+                left: text_x,
+                top: text_y,
+                scale: 1.0,
+                bounds: glyphon::TextBounds {
+                    left: 0,
+                    top: 0,
+                    right: viewport_width as i32,
+                    bottom: viewport_height as i32,
+                },
+                default_color: glyphon::Color::rgb(50, 50, 50),
+                custom_glyphs: &[],
+            };
+
+            self.text_renderer.prepare(
+                &self.device,
+                &self.queue,
+                &mut self.font_system,
+                &mut self.text_atlas,
+                &self.viewport,
+                [text_area],
+                &mut self.swash_cache,
+            ).unwrap();
+        } else {
+            // "Player vs Player" text - centered on green button
+            let mut pvp_buffer = Buffer::new(&mut self.font_system, Metrics::new(32.0, 40.0));
+            pvp_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+            pvp_buffer.set_text(&mut self.font_system, "Player vs Player", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+
+            // PvP button is at [-0.5, 0.3] to [0.5, 0.1] in NDC
+            // Convert to pixel coordinates
+            // NDC Y=0.2 (center of button at (0.3+0.1)/2) -> Screen Y
+            // NDC goes from -1 (bottom) to +1 (top), Screen goes from 0 (top) to height (bottom)
+            // NDC to Screen: screen_y = (1 - ndc_y) / 2 * height
+            let pvp_ndc_center_y = (0.3 + 0.1) / 2.0; // 0.2
+            let pvp_center_y = (1.0 - pvp_ndc_center_y) / 2.0 * viewport_height;
+
+            let layout = pvp_buffer.layout_runs();
+            let mut text_width: f32 = 0.0;
+            for run in layout {
+                text_width = text_width.max(run.line_w);
+            }
+
+            let pvp_text_x = (viewport_width / 2.0 - text_width / 2.0).max(0.0);
+            let pvp_text_y = (pvp_center_y - 16.0).max(0.0); // Adjust for font size
+
+            // "Player vs AI" text - centered on blue button
+            let mut pvai_buffer = Buffer::new(&mut self.font_system, Metrics::new(32.0, 40.0));
+            pvai_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+            pvai_buffer.set_text(&mut self.font_system, "Player vs AI", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+
+            // PvAI button is at [-0.5, -0.1] to [0.5, -0.3] in NDC
+            let pvai_ndc_center_y = (-0.1 + -0.3) / 2.0; // -0.2
+            let pvai_center_y = (1.0 - pvai_ndc_center_y) / 2.0 * viewport_height;
+
+            let layout2 = pvai_buffer.layout_runs();
+            let mut text_width2: f32 = 0.0;
+            for run in layout2 {
+                text_width2 = text_width2.max(run.line_w);
+            }
+
+            let pvai_text_x = (viewport_width / 2.0 - text_width2 / 2.0).max(0.0);
+            let pvai_text_y = (pvai_center_y - 16.0).max(0.0); // Adjust for font size
+
+            let text_areas = [
+                TextArea {
+                    buffer: &pvp_buffer,
+                    left: pvp_text_x,
+                    top: pvp_text_y,
+                    scale: 1.0,
+                    bounds: glyphon::TextBounds {
+                        left: 0,
+                        top: 0,
+                        right: viewport_width as i32,
+                        bottom: viewport_height as i32,
+                    },
+                    default_color: glyphon::Color::rgb(0, 0, 0),
+                    custom_glyphs: &[],
+                },
+                TextArea {
+                    buffer: &pvai_buffer,
+                    left: pvai_text_x,
+                    top: pvai_text_y,
+                    scale: 1.0,
+                    bounds: glyphon::TextBounds {
+                        left: 0,
+                        top: 0,
+                        right: viewport_width as i32,
+                        bottom: viewport_height as i32,
+                    },
+                    default_color: glyphon::Color::rgb(0, 0, 0),
+                    custom_glyphs: &[],
+                },
+            ];
+
+            self.text_renderer.prepare(
+                &self.device,
+                &self.queue,
+                &mut self.font_system,
+                &mut self.text_atlas,
+                &self.viewport,
+                text_areas,
+                &mut self.swash_cache,
+            ).unwrap();
+        }
+
+        // Render text
+        {
+            let mut text_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Text Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
+
+            self.text_renderer.render(&self.text_atlas, &self.viewport, &mut text_pass).unwrap();
+        }
+
+        self.queue.submit(std::iter::once(encoder.finish()));
+        output.present();
+    }
+
+    fn is_coord_in_button(&self, coords: PhysicalPosition<f64>, button_index: usize) -> bool {
+        // Convert physical coordinates to normalized device coordinates (-1 to 1)
+        #[cfg(target_arch = "wasm32")]
+        let (adjusted_x, adjusted_y) = {
+            let scale_factor = self.window.scale_factor();
+            (coords.x / scale_factor, coords.y / scale_factor)
+        };
+
+        #[cfg(not(target_arch = "wasm32"))]
+        let (adjusted_x, adjusted_y) = (coords.x, coords.y);
+
+        let norm_x = (adjusted_x / self.window_size.0 as f64) * 2.0 - 1.0;
+        let norm_y = (adjusted_y / self.window_size.1 as f64) * 2.0 - 1.0;
+
+        match button_index {
+            0 => {
+                // PvP button (top): x in [-0.5, 0.5], y in [-0.3, -0.1] (in NDC, -Y is down)
+                norm_x >= -0.5 && norm_x <= 0.5 && norm_y >= -0.3 && norm_y <= -0.1
+            }
+            1 => {
+                // PvAI button (bottom): x in [-0.5, 0.5], y in [0.1, 0.3]
+                norm_x >= -0.5 && norm_x <= 0.5 && norm_y >= 0.1 && norm_y <= 0.3
+            }
+            _ => false,
+        }
+    }
+
+    fn draw_game_end(&mut self, position: &Position, selected_tile: Option<u8>, pov: Color, result: GameResult) {
+        // First, draw the board position underneath
+        self.draw_position(position, selected_tile, pov);
+
+        // Now draw overlay on top
+        let output = self.surface.get_current_texture().unwrap();
+        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Game End Overlay Encoder"),
+        });
+
+        // Determine overlay color and text based on result
+        let (overlay_color, text, text_color) = match result {
+            GameResult::WhiteWins => {
+                // Light background for white wins
+                ([0.95, 0.95, 0.95, 0.95], "White Wins!", glyphon::Color::rgb(20, 20, 20))
+            }
+            GameResult::BlackWins => {
+                // Dark background for black wins
+                ([0.15, 0.15, 0.15, 0.95], "Black Wins!", glyphon::Color::rgb(240, 240, 240))
+            }
+            GameResult::Draw | GameResult::Stalemate => {
+                // Neutral gray background for draw/stalemate
+                ([0.55, 0.55, 0.55, 0.95], "Draw!", glyphon::Color::rgb(240, 240, 240))
+            }
+        };
+
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Game End Overlay Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load, // Load existing frame (the board)
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
+
+            render_pass.set_pipeline(&self.tile_pipeline);
+            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+
+            // Draw semi-transparent overlay rectangle
+            let vertices = [
+                TileVertex { position: [-0.7, 0.4], color: overlay_color },
+                TileVertex { position: [0.7, 0.4], color: overlay_color },
+                TileVertex { position: [-0.7, -0.4], color: overlay_color },
+                TileVertex { position: [0.7, -0.4], color: overlay_color },
+            ];
+
+            let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Game End Overlay Vertex Buffer"),
+                contents: bytemuck::cast_slice(&vertices),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
+
+            render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+            render_pass.draw_indexed(0..6, 0, 0..1);
+        }
+
+        // Prepare text rendering
+        let viewport_width = self.window_size.0 as f32;
+        let viewport_height = self.window_size.1 as f32;
+
+        // Update viewport with current window size
+        self.viewport.update(&self.queue, glyphon::Resolution {
+            width: self.window_size.0,
+            height: self.window_size.1,
+        });
+
+        // Create text buffer for game result
+        let mut text_buffer = Buffer::new(&mut self.font_system, Metrics::new(48.0, 60.0));
+        text_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+        text_buffer.set_text(&mut self.font_system, text, Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+
+        // Calculate text position to center it on the overlay
+        let overlay_center_x = viewport_width / 2.0;
+        let overlay_center_y = viewport_height / 2.0;
+
+        // Get text width to center it
+        let layout = text_buffer.layout_runs();
+        let mut text_width: f32 = 0.0;
+        for run in layout {
+            text_width = text_width.max(run.line_w);
+        }
+
+        let text_x = (overlay_center_x - text_width / 2.0).max(0.0);
+        let text_y = (overlay_center_y - 24.0).max(0.0); // Adjust for font size
+
+        let text_area = TextArea {
+            buffer: &text_buffer,
+            left: text_x,
+            top: text_y,
+            scale: 1.0,
+            bounds: glyphon::TextBounds {
+                left: 0,
+                top: 0,
+                right: viewport_width as i32,
+                bottom: viewport_height as i32,
+            },
+            default_color: text_color,
+            custom_glyphs: &[],
+        };
+
+        self.text_renderer.prepare(
+            &self.device,
+            &self.queue,
+            &mut self.font_system,
+            &mut self.text_atlas,
+            &self.viewport,
+            [text_area],
+            &mut self.swash_cache,
+        ).unwrap();
+
+        // Render text
+        {
+            let mut text_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Game End Text Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
+
+            self.text_renderer.render(&self.text_atlas, &self.viewport, &mut text_pass).unwrap();
+        }
+
+        self.queue.submit(std::iter::once(encoder.finish()));
+        output.present();
     }
 }
