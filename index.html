@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess Engine - WASM</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #1a1a1a;
+        }
+
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+
+        #chess-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+        }
+
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ffffff;
+            font-size: 24px;
+            text-align: center;
+        }
+
+        #error {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ff4444;
+            font-size: 18px;
+            text-align: center;
+            padding: 20px;
+            background-color: rgba(0, 0, 0, 0.8);
+            border-radius: 8px;
+            max-width: 80%;
+        }
+
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 4px solid #ffffff;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="chess-canvas"></canvas>
+    <div id="loading">
+        <div>Loading Chess Engine...</div>
+        <div class="spinner"></div>
+    </div>
+    <div id="error"></div>
+
+    <script type="module">
+        async function init() {
+            const loading = document.getElementById('loading');
+            const error = document.getElementById('error');
+
+            try {
+                // Import and initialize the WASM module
+                const wasmModule = await import('./pkg/chess_engine.js');
+
+                // Call the default init function to load the WASM binary
+                await wasmModule.default();
+
+                // The WASM module auto-initializes with #[wasm_bindgen(start)]
+                // Hide loading indicator after a short delay to ensure initialization
+                setTimeout(() => {
+                    loading.style.display = 'none';
+                }, 500);
+
+            } catch (e) {
+                console.error('Failed to load WASM module:', e);
+                loading.style.display = 'none';
+                error.style.display = 'block';
+                error.innerHTML = `
+                    <strong>Failed to load Chess Engine</strong><br><br>
+                    ${e.message}<br><br>
+                    <small>Make sure to build the WASM module first:<br>
+                    Run <code>wasm-pack build --target web</code></small>
+                `;
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>
