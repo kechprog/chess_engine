@@ -7,10 +7,10 @@ fn test_king_in_check_by_rook() {
     let mut pos = empty_board();
 
     // White king on e1
-    pos.position[4] = Piece { color: Color::White, piece_type: Type::King };
+    place_piece(&mut pos, 4, Piece { color: Color::White, piece_type: Type::King });
 
     // Black rook on e8
-    pos.position[60] = Piece { color: Color::Black, piece_type: Type::Rook };
+    place_piece(&mut pos, 60, Piece { color: Color::Black, piece_type: Type::Rook });
 
     assert!(pos.is_in_check(Color::White), "King should be in check from rook");
 }
@@ -20,10 +20,10 @@ fn test_king_in_check_by_bishop() {
     let mut pos = empty_board();
 
     // White king on e1
-    pos.position[4] = Piece { color: Color::White, piece_type: Type::King };
+    place_piece(&mut pos, 4, Piece { color: Color::White, piece_type: Type::King });
 
     // Black bishop on a5
-    pos.position[32] = Piece { color: Color::Black, piece_type: Type::Bishop };
+    place_piece(&mut pos, 32, Piece { color: Color::Black, piece_type: Type::Bishop });
 
     assert!(pos.is_in_check(Color::White), "King should be in check from bishop");
 }
@@ -33,10 +33,10 @@ fn test_king_in_check_by_queen() {
     let mut pos = empty_board();
 
     // White king on e1
-    pos.position[4] = Piece { color: Color::White, piece_type: Type::King };
+    place_piece(&mut pos, 4, Piece { color: Color::White, piece_type: Type::King });
 
     // Black queen on e8
-    pos.position[60] = Piece { color: Color::Black, piece_type: Type::Queen };
+    place_piece(&mut pos, 60, Piece { color: Color::Black, piece_type: Type::Queen });
 
     assert!(pos.is_in_check(Color::White), "King should be in check from queen");
 }
@@ -46,10 +46,10 @@ fn test_king_in_check_by_knight() {
     let mut pos = empty_board();
 
     // White king on e4
-    pos.position[28] = Piece { color: Color::White, piece_type: Type::King };
+    place_piece(&mut pos, 28, Piece { color: Color::White, piece_type: Type::King });
 
     // Black knight on d6 (can reach e4)
-    pos.position[43] = Piece { color: Color::Black, piece_type: Type::Knight };
+    place_piece(&mut pos, 43, Piece { color: Color::Black, piece_type: Type::Knight });
 
     assert!(pos.is_in_check(Color::White), "King should be in check from knight");
 }
@@ -59,10 +59,10 @@ fn test_king_in_check_by_pawn() {
     let mut pos = empty_board();
 
     // White king on e4
-    pos.position[28] = Piece { color: Color::White, piece_type: Type::King };
+    place_piece(&mut pos, 28, Piece { color: Color::White, piece_type: Type::King });
 
     // Black pawn on d5 (attacks e4 diagonally)
-    pos.position[35] = Piece { color: Color::Black, piece_type: Type::Pawn };
+    place_piece(&mut pos, 35, Piece { color: Color::Black, piece_type: Type::Pawn });
 
     assert!(pos.is_in_check(Color::White), "King should be in check from pawn");
 }
@@ -72,10 +72,10 @@ fn test_cannot_move_into_check() {
     let mut pos = empty_board();
 
     // White king on e1
-    pos.position[4] = Piece { color: Color::White, piece_type: Type::King };
+    place_piece(&mut pos, 4, Piece { color: Color::White, piece_type: Type::King });
 
     // Black rook on f8 (controls f-file)
-    pos.position[61] = Piece { color: Color::Black, piece_type: Type::Rook };
+    place_piece(&mut pos, 61, Piece { color: Color::Black, piece_type: Type::Rook });
 
     let moves = pos.legal_moves(4);
 
@@ -88,19 +88,19 @@ fn test_must_move_out_of_check() {
     let mut pos = empty_board();
 
     // White king on e4
-    pos.position[28] = Piece { color: Color::White, piece_type: Type::King };
+    place_piece(&mut pos, 28, Piece { color: Color::White, piece_type: Type::King });
 
     // Black rook on e8 (checking the king)
-    pos.position[60] = Piece { color: Color::Black, piece_type: Type::Rook };
+    place_piece(&mut pos, 60, Piece { color: Color::Black, piece_type: Type::Rook });
 
     let moves = pos.legal_moves(28);
 
     // All legal moves should get the king out of check
     for m in moves.iter() {
         let mut temp_pos = Position {
-            position: pos.position.clone(),
+            position: pos.position,
             prev_moves: pos.prev_moves.clone(),
-            castling_cond: pos.castling_cond.clone(),
+            castling_cond: pos.castling_cond,
         };
         temp_pos.mk_move(*m);
         assert!(!temp_pos.is_in_check(Color::White), "Move should resolve check");
@@ -112,13 +112,13 @@ fn test_pinned_piece_cannot_move() {
     let mut pos = empty_board();
 
     // White king on e1
-    pos.position[4] = Piece { color: Color::White, piece_type: Type::King };
+    place_piece(&mut pos, 4, Piece { color: Color::White, piece_type: Type::King });
 
     // White bishop on e2 (between king and attacker)
-    pos.position[12] = Piece { color: Color::White, piece_type: Type::Bishop };
+    place_piece(&mut pos, 12, Piece { color: Color::White, piece_type: Type::Bishop });
 
     // Black rook on e8 (pinning the bishop)
-    pos.position[60] = Piece { color: Color::Black, piece_type: Type::Rook };
+    place_piece(&mut pos, 60, Piece { color: Color::Black, piece_type: Type::Rook });
 
     let moves = pos.legal_moves(12);
 
@@ -127,9 +127,9 @@ fn test_pinned_piece_cannot_move() {
     for m in moves.iter() {
         // Any legal move for the bishop should not expose the king to check
         let mut temp_pos = Position {
-            position: pos.position.clone(),
+            position: pos.position,
             prev_moves: pos.prev_moves.clone(),
-            castling_cond: pos.castling_cond.clone(),
+            castling_cond: pos.castling_cond,
         };
         temp_pos.mk_move(*m);
         assert!(!temp_pos.is_in_check(Color::White), "Pinned piece moves must not expose king");

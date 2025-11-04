@@ -17,6 +17,12 @@ pub struct Position {
     pub castling_cond: [bool; 6],
 }
 
+#[derive(Clone, Copy)]
+pub struct UndoInfo {
+    captured_piece: Piece,
+    castling_cond: [bool; 6],
+}
+
 impl Default for Position {
     fn default() -> Self {
         Self::from_fen(r"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR")
@@ -158,7 +164,7 @@ impl Position {
                 self.position[from] = Piece::default();
             },
             MoveType::EnPassant => {
-                match self.position[from].color{
+                match moving_piece.color{
                     Color::White => {
                         self.position[to - 8] = Piece::default();
                         self.position[to] = self.position[from];
@@ -342,7 +348,7 @@ impl Position {
 
     /// Checks if the king of the given color is currently in check
     pub fn is_in_check(&self, color: Color) -> bool {
-        // Find the king
+        // Find the king's square
         let king_square = self.position.iter()
             .enumerate()
             .find(|(_, piece)| piece.piece_type == Type::King && piece.color == color)
@@ -356,11 +362,11 @@ impl Position {
 
     /// Checks if a move is legal (doesn't leave/put the king in check)
     pub fn is_move_legal(&self, mv: Move) -> bool {
-        // Create a temporary position to test the move
+        // Create a minimal temporary position without cloning prev_moves
         let mut temp_position = Position {
-            position: self.position.clone(),
-            prev_moves: self.prev_moves.clone(),
-            castling_cond: self.castling_cond.clone(),
+            position: self.position,  // Copy array (stack-allocated, fast)
+            prev_moves: Vec::new(),    // Don't clone the move history
+            castling_cond: self.castling_cond,  // Copy array
         };
 
         // Get the color of the piece being moved
@@ -375,10 +381,8 @@ impl Position {
 
     /// Checks if the given color has ANY legal moves available
     pub fn has_legal_moves(&self, color: Color) -> bool {
-        // Iterate through all squares on the board
         for idx in 0..64 {
             let piece = self.position[idx];
-            // Check if this square has a piece of the given color
             if piece.piece_type != Type::None && piece.color == color {
                 // Get legal moves for this piece
                 let moves = self.legal_moves(idx);
@@ -520,7 +524,7 @@ impl Position {
             Color::Black
         };
 
-        let mut all_moves = Vec::new();
+        let mut all_moves = Vec::with_capacity(40);  // Typical position has 30-40 legal moves
         for idx in 0..64 {
             let piece = self.position[idx];
             if piece.piece_type != Type::None && piece.color == current_side {
@@ -528,6 +532,86 @@ impl Position {
             }
         }
         all_moves
+    }
+
+    /// Makes a move and returns undo information
+    /// This is more efficient than cloning the position
+    pub fn make_move_undoable(&mut self, mv: Move) -> UndoInfo {
+        let to = mv._to() as usize;
+        let from = mv._from() as usize;
+
+        // For en passant, the captured piece is not at the 'to' square
+        let captured_piece = match mv.move_type() {
+            MoveType::EnPassant => {
+                match self.position[from].color {
+                    Color::White => self.position[to - 8],
+                    Color::Black => self.position[to + 8],
+                }
+            },
+            _ => self.position[to],
+        };
+
+        let undo = UndoInfo {
+            captured_piece,
+            castling_cond: self.castling_cond,
+        };
+
+        self.mk_move(mv);
+
+        undo
+    }
+
+    /// Unmakes a move using undo information
+    pub fn unmake_move(&mut self, mv: Move, undo: UndoInfo) {
+        let from = mv._from() as usize;
+        let to = mv._to() as usize;
+
+        // Restore castling conditions
+        self.castling_cond = undo.castling_cond;
+
+        // Remove the move from history
+        self.prev_moves.pop();
+
+        // Reverse the move based on type
+        match mv.move_type() {
+            MoveType::Normal => {
+                self.position[from] = self.position[to];
+                self.position[to] = undo.captured_piece;
+            },
+            MoveType::EnPassant => {
+                let captured_sq = match self.position[to].color {
+                    Color::White => to - 8,
+                    Color::Black => to + 8,
+                };
+                self.position[from] = self.position[to];
+                self.position[to] = Piece::default();
+                self.position[captured_sq] = undo.captured_piece;
+            },
+            MoveType::Castling => {
+                // Reverse king move
+                self.position[from] = self.position[to];
+                self.position[to] = Piece::default();
+
+                // Reverse rook move
+                let is_kingside = to > from;
+                let (rook_from, rook_to) = match (self.position[from].color, is_kingside) {
+                    (Color::White, true) => (7, 5),
+                    (Color::White, false) => (0, 3),
+                    (Color::Black, true) => (63, 61),
+                    (Color::Black, false) => (56, 59),
+                };
+                self.position[rook_from] = self.position[rook_to];
+                self.position[rook_to] = Piece::default();
+            },
+            MoveType::PromotionQueen | MoveType::PromotionRook |
+            MoveType::PromotionBishop | MoveType::PromotionKnight => {
+                self.position[from] = Piece {
+                    piece_type: Type::Pawn,
+                    color: self.position[to].color
+                };
+                self.position[to] = undo.captured_piece;
+            },
+        }
     }
 
     /// Perft (Performance Test) - counts nodes at a given depth
@@ -544,11 +628,26 @@ impl Position {
             return moves.len() as u64;
         }
 
+        // Bulk counting optimization for depth 2
+        if depth == 2 {
+            let mut count = 0;
+            let mut pos = self.clone();
+
+            for mv in moves {
+                let undo = pos.make_move_undoable(mv);
+                count += pos.all_legal_moves().len() as u64;  // Just count, don't recurse
+                pos.unmake_move(mv, undo);
+            }
+            return count;
+        }
+
         let mut nodes = 0;
+        let mut pos = self.clone();  // Clone once at this level
+
         for mv in moves {
-            let mut new_pos = self.clone();
-            new_pos.mk_move(mv);
-            nodes += new_pos.perft(depth - 1);
+            let undo = pos.make_move_undoable(mv);
+            nodes += pos.perft(depth - 1);
+            pos.unmake_move(mv, undo);
         }
 
         nodes
@@ -558,6 +657,7 @@ impl Position {
     pub fn divide(&self, depth: u32) -> u64 {
         let moves = self.all_legal_moves();
         let mut total = 0;
+        let mut pos = self.clone();  // Clone once
 
         for mv in moves {
             let from = mv._from();
@@ -569,9 +669,9 @@ impl Position {
             let to_file = (b'a' + (to % 8) as u8) as char;
             let to_rank = (b'1' + (to / 8) as u8) as char;
 
-            let mut new_pos = self.clone();
-            new_pos.mk_move(mv);
-            let count = new_pos.perft(depth - 1);
+            let undo = pos.make_move_undoable(mv);
+            let count = pos.perft(depth - 1);
+            pos.unmake_move(mv, undo);
 
             println!("{}{}{}{}: {}", from_file, from_rank, to_file, to_rank, count);
             total += count;

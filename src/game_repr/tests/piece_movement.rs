@@ -1,5 +1,5 @@
 use crate::game_repr::{Position, Color, Type, Piece, Move, MoveType};
-use super::{empty_board, has_move};
+use super::{empty_board, has_move, place_piece};
 
 // ==================== OTHER PIECE MOVEMENT TESTS ====================
 
@@ -8,7 +8,7 @@ fn test_knight_moves() {
     let mut pos = empty_board();
 
     // Knight on e4
-    pos.position[28] = Piece { color: Color::White, piece_type: Type::Knight };
+    place_piece(&mut pos, 28, Piece { color: Color::White, piece_type: Type::Knight });
 
     let moves = pos.legal_moves(28);
 
@@ -21,7 +21,7 @@ fn test_bishop_moves() {
     let mut pos = empty_board();
 
     // Bishop on e4
-    pos.position[28] = Piece { color: Color::White, piece_type: Type::Bishop };
+    place_piece(&mut pos, 28, Piece { color: Color::White, piece_type: Type::Bishop });
 
     let moves = pos.legal_moves(28);
 
@@ -34,7 +34,7 @@ fn test_rook_moves() {
     let mut pos = empty_board();
 
     // Rook on e4
-    pos.position[28] = Piece { color: Color::White, piece_type: Type::Rook };
+    place_piece(&mut pos, 28, Piece { color: Color::White, piece_type: Type::Rook });
 
     let moves = pos.legal_moves(28);
 
@@ -47,7 +47,7 @@ fn test_queen_moves() {
     let mut pos = empty_board();
 
     // Queen on e4
-    pos.position[28] = Piece { color: Color::White, piece_type: Type::Queen };
+    place_piece(&mut pos, 28, Piece { color: Color::White, piece_type: Type::Queen });
 
     let moves = pos.legal_moves(28);
 
@@ -60,10 +60,10 @@ fn test_rook_blocked_by_own_piece() {
     let mut pos = empty_board();
 
     // Rook on a1
-    pos.position[0] = Piece { color: Color::White, piece_type: Type::Rook };
+    place_piece(&mut pos, 0, Piece { color: Color::White, piece_type: Type::Rook });
 
     // White pawn on a3
-    pos.position[16] = Piece { color: Color::White, piece_type: Type::Pawn };
+    place_piece(&mut pos, 16, Piece { color: Color::White, piece_type: Type::Pawn });
 
     let moves = pos.legal_moves(0);
 
@@ -77,10 +77,10 @@ fn test_bishop_captures_opponent() {
     let mut pos = empty_board();
 
     // White bishop on a1
-    pos.position[0] = Piece { color: Color::White, piece_type: Type::Bishop };
+    place_piece(&mut pos, 0, Piece { color: Color::White, piece_type: Type::Bishop });
 
     // Black pawn on c3
-    pos.position[18] = Piece { color: Color::Black, piece_type: Type::Pawn };
+    place_piece(&mut pos, 18, Piece { color: Color::Black, piece_type: Type::Pawn });
 
     let moves = pos.legal_moves(0);
 

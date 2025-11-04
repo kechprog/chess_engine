@@ -1,5 +1,5 @@
 use crate::game_repr::{Position, Color, Type, Piece, Move, MoveType};
-use super::{empty_board, has_move};
+use super::{empty_board, has_move, place_piece};
 
 // ==================== KING MOVEMENT TESTS ====================
 
@@ -38,10 +38,10 @@ fn test_king_cannot_capture_own_pieces() {
     };
 
     // Surround with white pawns
-    pos.position[28] = Piece { color: Color::White, piece_type: Type::Pawn };
-    pos.position[26] = Piece { color: Color::White, piece_type: Type::Pawn };
-    pos.position[35] = Piece { color: Color::White, piece_type: Type::Pawn };
-    pos.position[19] = Piece { color: Color::White, piece_type: Type::Pawn };
+    place_piece(&mut pos, 28, Piece { color: Color::White, piece_type: Type::Pawn });
+    place_piece(&mut pos, 26, Piece { color: Color::White, piece_type: Type::Pawn });
+    place_piece(&mut pos, 35, Piece { color: Color::White, piece_type: Type::Pawn });
+    place_piece(&mut pos, 19, Piece { color: Color::White, piece_type: Type::Pawn });
 
     let moves = pos.legal_moves(27);
 

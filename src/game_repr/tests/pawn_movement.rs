@@ -1,5 +1,5 @@
 use crate::game_repr::{Position, Color, Type, Piece, Move, MoveType};
-use super::{empty_board, has_move};
+use super::{empty_board, has_move, place_piece};
 
 // ==================== PAWN MOVEMENT TESTS ====================
 
@@ -78,8 +78,8 @@ fn test_pawn_diagonal_capture() {
         piece_type: Type::Pawn,
     };
     // Black pieces on diagonals
-    pos.position[34] = Piece { color: Color::Black, piece_type: Type::Pawn }; // e5
-    pos.position[36] = Piece { color: Color::Black, piece_type: Type::Pawn }; // c5
+    place_piece(&mut pos, 34, Piece { color: Color::Black, piece_type: Type::Pawn }); // e5
+    place_piece(&mut pos, 36, Piece { color: Color::Black, piece_type: Type::Pawn }); // c5
 
     let moves = pos.legal_moves(27);
 
@@ -99,8 +99,8 @@ fn test_pawn_cannot_capture_own_pieces() {
         piece_type: Type::Pawn,
     };
     // White pieces on diagonals
-    pos.position[34] = Piece { color: Color::White, piece_type: Type::Pawn };
-    pos.position[36] = Piece { color: Color::White, piece_type: Type::Pawn };
+    place_piece(&mut pos, 34, Piece { color: Color::White, piece_type: Type::Pawn });
+    place_piece(&mut pos, 36, Piece { color: Color::White, piece_type: Type::Pawn });
 
     let moves = pos.legal_moves(27);
 

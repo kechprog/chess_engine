@@ -7,8 +7,8 @@ fn test_white_kingside_castling_legal() {
     let mut pos = empty_board();
 
     // Set up white king and rook in starting positions
-    pos.position[4] = Piece { color: Color::White, piece_type: Type::King };  // e1
-    pos.position[7] = Piece { color: Color::White, piece_type: Type::Rook };  // h1
+    place_piece(&mut pos, 4, Piece { color: Color::White, piece_type: Type::King });  // e1
+    place_piece(&mut pos, 7, Piece { color: Color::White, piece_type: Type::Rook });  // h1
 
     // Enable castling rights
     pos.castling_cond[0] = true; // White kingside rook
@@ -26,8 +26,8 @@ fn test_white_queenside_castling_legal() {
     let mut pos = empty_board();
 
     // Set up white king and rook
-    pos.position[4] = Piece { color: Color::White, piece_type: Type::King };  // e1
-    pos.position[0] = Piece { color: Color::White, piece_type: Type::Rook };  // a1
+    place_piece(&mut pos, 4, Piece { color: Color::White, piece_type: Type::King });  // e1
+    place_piece(&mut pos, 0, Piece { color: Color::White, piece_type: Type::Rook });  // a1
 
     pos.castling_cond[1] = true; // White queenside rook
     pos.castling_cond[2] = true; // White king
@@ -44,8 +44,8 @@ fn test_black_kingside_castling_legal() {
     let mut pos = empty_board();
 
     // Set up black king and rook
-    pos.position[60] = Piece { color: Color::Black, piece_type: Type::King };  // e8
-    pos.position[63] = Piece { color: Color::Black, piece_type: Type::Rook };  // h8
+    place_piece(&mut pos, 60, Piece { color: Color::Black, piece_type: Type::King });  // e8
+    place_piece(&mut pos, 63, Piece { color: Color::Black, piece_type: Type::Rook });  // h8
 
     pos.castling_cond[3] = true; // Black kingside rook
     pos.castling_cond[5] = true; // Black king
@@ -62,8 +62,8 @@ fn test_black_queenside_castling_legal() {
     let mut pos = empty_board();
 
     // Set up black king and rook
-    pos.position[60] = Piece { color: Color::Black, piece_type: Type::King };  // e8
-    pos.position[56] = Piece { color: Color::Black, piece_type: Type::Rook };  // a8
+    place_piece(&mut pos, 60, Piece { color: Color::Black, piece_type: Type::King });  // e8
+    place_piece(&mut pos, 56, Piece { color: Color::Black, piece_type: Type::Rook });  // a8
 
     pos.castling_cond[4] = true; // Black queenside rook
     pos.castling_cond[5] = true; // Black king
@@ -79,9 +79,9 @@ fn test_black_queenside_castling_legal() {
 fn test_castling_blocked_by_pieces() {
     let mut pos = empty_board();
 
-    pos.position[4] = Piece { color: Color::White, piece_type: Type::King };
-    pos.position[7] = Piece { color: Color::White, piece_type: Type::Rook };
-    pos.position[5] = Piece { color: Color::White, piece_type: Type::Knight }; // Block f1
+    place_piece(&mut pos, 4, Piece { color: Color::White, piece_type: Type::King });
+    place_piece(&mut pos, 7, Piece { color: Color::White, piece_type: Type::Rook });
+    place_piece(&mut pos, 5, Piece { color: Color::White, piece_type: Type::Knight }); // Block f1
 
     pos.castling_cond[0] = true;
     pos.castling_cond[2] = true;
@@ -96,8 +96,8 @@ fn test_castling_blocked_by_pieces() {
 fn test_castling_prevented_when_king_moved() {
     let mut pos = empty_board();
 
-    pos.position[4] = Piece { color: Color::White, piece_type: Type::King };
-    pos.position[7] = Piece { color: Color::White, piece_type: Type::Rook };
+    place_piece(&mut pos, 4, Piece { color: Color::White, piece_type: Type::King });
+    place_piece(&mut pos, 7, Piece { color: Color::White, piece_type: Type::Rook });
 
     pos.castling_cond[0] = true;
     pos.castling_cond[2] = true;
@@ -119,8 +119,8 @@ fn test_castling_prevented_when_king_moved() {
 fn test_castling_prevented_when_rook_moved() {
     let mut pos = empty_board();
 
-    pos.position[4] = Piece { color: Color::White, piece_type: Type::King };
-    pos.position[7] = Piece { color: Color::White, piece_type: Type::Rook };
+    place_piece(&mut pos, 4, Piece { color: Color::White, piece_type: Type::King });
+    place_piece(&mut pos, 7, Piece { color: Color::White, piece_type: Type::Rook });
 
     pos.castling_cond[0] = true;
     pos.castling_cond[2] = true;
@@ -143,11 +143,11 @@ fn test_castling_prevented_when_in_check() {
     let mut pos = empty_board();
 
     // White king and rook
-    pos.position[4] = Piece { color: Color::White, piece_type: Type::King };
-    pos.position[7] = Piece { color: Color::White, piece_type: Type::Rook };
+    place_piece(&mut pos, 4, Piece { color: Color::White, piece_type: Type::King });
+    place_piece(&mut pos, 7, Piece { color: Color::White, piece_type: Type::Rook });
 
     // Black rook attacking the king
-    pos.position[60] = Piece { color: Color::Black, piece_type: Type::Rook };
+    place_piece(&mut pos, 60, Piece { color: Color::Black, piece_type: Type::Rook });
 
     pos.castling_cond[0] = true;
     pos.castling_cond[2] = true;
@@ -163,11 +163,11 @@ fn test_castling_prevented_when_passing_through_check() {
     let mut pos = empty_board();
 
     // White king and rook
-    pos.position[4] = Piece { color: Color::White, piece_type: Type::King };
-    pos.position[7] = Piece { color: Color::White, piece_type: Type::Rook };
+    place_piece(&mut pos, 4, Piece { color: Color::White, piece_type: Type::King });
+    place_piece(&mut pos, 7, Piece { color: Color::White, piece_type: Type::Rook });
 
     // Black rook attacking f1 (square king passes through)
-    pos.position[61] = Piece { color: Color::Black, piece_type: Type::Rook };
+    place_piece(&mut pos, 61, Piece { color: Color::Black, piece_type: Type::Rook });
 
     pos.castling_cond[0] = true;
     pos.castling_cond[2] = true;
@@ -183,11 +183,11 @@ fn test_castling_prevented_when_landing_in_check() {
     let mut pos = empty_board();
 
     // White king and rook
-    pos.position[4] = Piece { color: Color::White, piece_type: Type::King };
-    pos.position[7] = Piece { color: Color::White, piece_type: Type::Rook };
+    place_piece(&mut pos, 4, Piece { color: Color::White, piece_type: Type::King });
+    place_piece(&mut pos, 7, Piece { color: Color::White, piece_type: Type::Rook });
 
     // Black rook attacking g1 (square king lands on)
-    pos.position[62] = Piece { color: Color::Black, piece_type: Type::Rook };
+    place_piece(&mut pos, 62, Piece { color: Color::Black, piece_type: Type::Rook });
 
     pos.castling_cond[0] = true;
     pos.castling_cond[2] = true;
@@ -202,8 +202,8 @@ fn test_castling_prevented_when_landing_in_check() {
 fn test_castling_execution_kingside() {
     let mut pos = empty_board();
 
-    pos.position[4] = Piece { color: Color::White, piece_type: Type::King };
-    pos.position[7] = Piece { color: Color::White, piece_type: Type::Rook };
+    place_piece(&mut pos, 4, Piece { color: Color::White, piece_type: Type::King });
+    place_piece(&mut pos, 7, Piece { color: Color::White, piece_type: Type::Rook });
 
     pos.castling_cond[0] = true;
     pos.castling_cond[2] = true;
@@ -228,8 +228,8 @@ fn test_castling_execution_kingside() {
 fn test_castling_execution_queenside() {
     let mut pos = empty_board();
 
-    pos.position[4] = Piece { color: Color::White, piece_type: Type::King };
-    pos.position[0] = Piece { color: Color::White, piece_type: Type::Rook };
+    place_piece(&mut pos, 4, Piece { color: Color::White, piece_type: Type::King });
+    place_piece(&mut pos, 0, Piece { color: Color::White, piece_type: Type::Rook });
 
     pos.castling_cond[1] = true;
     pos.castling_cond[2] = true;
@@ -254,9 +254,9 @@ fn test_castling_execution_queenside() {
 fn test_castling_rights_updated_when_rook_captured() {
     let mut pos = empty_board();
 
-    pos.position[4] = Piece { color: Color::White, piece_type: Type::King };
-    pos.position[7] = Piece { color: Color::White, piece_type: Type::Rook };
-    pos.position[15] = Piece { color: Color::Black, piece_type: Type::Rook };
+    place_piece(&mut pos, 4, Piece { color: Color::White, piece_type: Type::King });
+    place_piece(&mut pos, 7, Piece { color: Color::White, piece_type: Type::Rook });
+    place_piece(&mut pos, 15, Piece { color: Color::Black, piece_type: Type::Rook });
 
     pos.castling_cond[0] = true;
     pos.castling_cond[2] = true;

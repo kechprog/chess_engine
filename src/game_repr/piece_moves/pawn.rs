@@ -1,6 +1,4 @@
-use crate::{
-    game_repr::{Color, Move, MoveType, Piece, Position, Type},
-};
+use crate::game_repr::{Color, Move, MoveType, Position, Type};
 
 impl Position {
     // TODO: add on passant
@@ -27,13 +25,13 @@ impl Position {
         };
         let piece = self.position[idx];
         let idx = idx as i64;
-        let mut moves = vec![];
+        let mut moves = Vec::with_capacity(16);  // Max: 4 moves × 4 promotion types
 
         // Pawns on starting rank can move 1 or 2 squares forward
         if (idx / 8 == 1 && piece.color == Color::White)
             || (idx / 8 == 6 && piece.color == Color::Black)
         {
-            for m in (1..=2){
+            for m in 1..=2 {
                 let m_idx = (idx + offset.1*m) as usize;
                 if self.position[m_idx].piece_type == Type::None {
                     moves.push(Move::new(idx as u8, m_idx as u8, MoveType::Normal))
@@ -76,7 +74,7 @@ impl Position {
         }
 
         // Diagonal captures - only include non-zero offsets (edge squares have 0 to prevent wrapping)
-        let mut capture_moves = vec![];
+        let mut capture_moves = Vec::with_capacity(2);  // Max 2 diagonal captures
         if offset.0 != 0 {
             let target = idx + offset.0;
             if target >= 0 && target < 64 {

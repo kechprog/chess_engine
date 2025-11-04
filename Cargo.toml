@@ -3,6 +3,10 @@ name = "chess_engine"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "chess_engine"
+path = "src/lib.rs"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
@@ -11,3 +15,15 @@ winit = "0.30"
 pollster = "0.4"
 image = "*"
 bytemuck = { version = "1.14", features = ["derive"] }
+
+[dev-dependencies]
+chess = "3.2"
+criterion = "0.5"
+
+[[bench]]
+name = "perft_bench"
+harness = false
+
+[profile.profiling]
+inherits = "release"
+debug = true

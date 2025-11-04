@@ -11,6 +11,11 @@ pub fn empty_board() -> Position {
     }
 }
 
+/// Helper function to place a piece
+pub fn place_piece(pos: &mut Position, idx: usize, piece: Piece) {
+    pos.position[idx] = piece;
+}
+
 /// Helper function to check if a move exists in the move list
 pub fn has_move(moves: &[Move], from: usize, to: usize) -> bool {
     moves.iter().any(|m| m._from() == from && m._to() == to)

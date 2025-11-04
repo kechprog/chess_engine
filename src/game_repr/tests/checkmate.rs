@@ -51,16 +51,16 @@ fn test_back_rank_mate() {
     let mut pos = empty_board();
 
     // White king trapped on back rank by own pawns
-    pos.position[6] = Piece { color: Color::White, piece_type: Type::King };  // g1
-    pos.position[13] = Piece { color: Color::White, piece_type: Type::Pawn }; // f2
-    pos.position[14] = Piece { color: Color::White, piece_type: Type::Pawn }; // g2
-    pos.position[15] = Piece { color: Color::White, piece_type: Type::Pawn }; // h2
+    place_piece(&mut pos, 6, Piece { color: Color::White, piece_type: Type::King });  // g1
+    place_piece(&mut pos, 13, Piece { color: Color::White, piece_type: Type::Pawn }); // f2
+    place_piece(&mut pos, 14, Piece { color: Color::White, piece_type: Type::Pawn }); // g2
+    place_piece(&mut pos, 15, Piece { color: Color::White, piece_type: Type::Pawn }); // h2
 
     // Black rook delivers checkmate on back rank (on a1, far from king)
-    pos.position[0] = Piece { color: Color::Black, piece_type: Type::Rook };  // a1
+    place_piece(&mut pos, 0, Piece { color: Color::Black, piece_type: Type::Rook });  // a1
 
     // Add protection so king can't escape to f1 or h1
-    pos.position[61] = Piece { color: Color::Black, piece_type: Type::Queen }; // f8 (controls f1 and h1)
+    place_piece(&mut pos, 61, Piece { color: Color::Black, piece_type: Type::Queen }); // f8 (controls f1 and h1)
 
     assert!(pos.is_in_check(Color::White), "King should be in check");
     assert!(pos.is_checkmate(Color::White), "Should be back rank mate");
@@ -71,13 +71,13 @@ fn test_not_checkmate_can_block() {
     let mut pos = empty_board();
 
     // White king on e1
-    pos.position[4] = Piece { color: Color::White, piece_type: Type::King };
+    place_piece(&mut pos, 4, Piece { color: Color::White, piece_type: Type::King });
 
     // White bishop that can block
-    pos.position[21] = Piece { color: Color::White, piece_type: Type::Bishop };
+    place_piece(&mut pos, 21, Piece { color: Color::White, piece_type: Type::Bishop });
 
     // Black rook checking the king
-    pos.position[60] = Piece { color: Color::Black, piece_type: Type::Rook };
+    place_piece(&mut pos, 60, Piece { color: Color::Black, piece_type: Type::Rook });
 
     assert!(pos.is_in_check(Color::White), "King should be in check");
     assert!(!pos.is_checkmate(Color::White), "Not checkmate - can block with bishop");
@@ -89,13 +89,13 @@ fn test_not_checkmate_can_capture() {
     let mut pos = empty_board();
 
     // White king on e4
-    pos.position[28] = Piece { color: Color::White, piece_type: Type::King };
+    place_piece(&mut pos, 28, Piece { color: Color::White, piece_type: Type::King });
 
     // White rook that can capture on e7
-    pos.position[52] = Piece { color: Color::White, piece_type: Type::Rook };
+    place_piece(&mut pos, 52, Piece { color: Color::White, piece_type: Type::Rook });
 
     // Black queen checking the king on e1 (can be captured by rook on same file)
-    pos.position[4] = Piece { color: Color::Black, piece_type: Type::Queen };
+    place_piece(&mut pos, 4, Piece { color: Color::Black, piece_type: Type::Queen });
 
     assert!(pos.is_in_check(Color::White), "King should be in check");
     assert!(!pos.is_checkmate(Color::White), "Not checkmate - can capture attacker");

@@ -1,9 +1,6 @@
 use crate::game_repr::Move;
 
-use super::super::{
-    piece::{Piece, Type},
-    position::Position
-};
+use super::super::position::Position;
 
 impl Position {
     pub fn queen_moves(&self, idx: usize) -> Vec<Move> {

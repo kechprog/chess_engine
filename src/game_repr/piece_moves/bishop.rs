@@ -8,7 +8,7 @@ use super::super::{
 impl Position {
     pub fn bishop_moves(&self, idx: usize, include_friendly: bool) -> Vec<Move> {
         // ne
-        let mut moves: Vec<Move> = vec![];
+        let mut moves: Vec<Move> = Vec::with_capacity(13);  // Bishops have max 13 moves (7+6 diagonals)
         let mut p_idx = idx;
         while p_idx % 8 != 7 && p_idx / 8 != 7 {
             p_idx += 9;

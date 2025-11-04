@@ -8,7 +8,7 @@ use super::super::{
 impl Position {
     pub fn rook_moves(&self, idx: usize, include_friendly: bool) -> Vec<Move> {
         // n
-        let mut moves = vec![];
+        let mut moves = Vec::with_capacity(14);  // Rooks have max 14 moves (7 per direction)
         let mut p_idx = idx;
         while p_idx / 8 != 7 {
             p_idx += 8;

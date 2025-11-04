@@ -7,7 +7,7 @@ fn test_pawn_promotion_on_back_rank() {
     let mut pos = empty_board();
 
     // White pawn on 7th rank
-    pos.position[54] = Piece { color: Color::White, piece_type: Type::Pawn }; // g7
+    place_piece(&mut pos, 54, Piece { color: Color::White, piece_type: Type::Pawn }); // g7
 
     let moves = pos.legal_moves(54);
 
@@ -21,7 +21,7 @@ fn test_pawn_promotion_execution() {
     let mut pos = empty_board();
 
     // White pawn on 7th rank
-    pos.position[54] = Piece { color: Color::White, piece_type: Type::Pawn };
+    place_piece(&mut pos, 54, Piece { color: Color::White, piece_type: Type::Pawn });
 
     // Move to 8th rank (should auto-promote to queen)
     pos.mk_move(Move::new(54, 62, MoveType::PromotionQueen));
@@ -39,10 +39,10 @@ fn test_pawn_promotion_on_capture() {
     let mut pos = empty_board();
 
     // White pawn on 7th rank
-    pos.position[54] = Piece { color: Color::White, piece_type: Type::Pawn }; // g7
+    place_piece(&mut pos, 54, Piece { color: Color::White, piece_type: Type::Pawn }); // g7
 
     // Black piece on h8
-    pos.position[63] = Piece { color: Color::Black, piece_type: Type::Rook };
+    place_piece(&mut pos, 63, Piece { color: Color::Black, piece_type: Type::Rook });
 
     let moves = pos.legal_moves(54);
 
@@ -59,7 +59,7 @@ fn test_black_pawn_promotion() {
     let mut pos = empty_board();
 
     // Black pawn on 2nd rank
-    pos.position[9] = Piece { color: Color::Black, piece_type: Type::Pawn }; // b2
+    place_piece(&mut pos, 9, Piece { color: Color::Black, piece_type: Type::Pawn }); // b2
 
     let moves = pos.legal_moves(9);
 

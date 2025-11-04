@@ -7,8 +7,8 @@ fn test_en_passant_legal() {
     let mut pos = empty_board();
 
     // Setup: White pawn on e5, black pawn on d7
-    pos.position[36] = Piece { color: Color::White, piece_type: Type::Pawn }; // e5
-    pos.position[51] = Piece { color: Color::Black, piece_type: Type::Pawn }; // d7
+    place_piece(&mut pos, 36, Piece { color: Color::White, piece_type: Type::Pawn }); // e5
+    place_piece(&mut pos, 51, Piece { color: Color::Black, piece_type: Type::Pawn }); // d7
 
     // Black pawn moves two squares from d7 to d5
     let black_move = Move::new(51, 35, MoveType::Normal);
@@ -35,10 +35,10 @@ fn test_en_passant_no_rank_wrapping() {
     let mut pos = empty_board();
 
     // Place white pawn on h5 (right edge)
-    pos.position[39] = Piece { color: Color::White, piece_type: Type::Pawn };
+    place_piece(&mut pos, 39, Piece { color: Color::White, piece_type: Type::Pawn });
 
     // Place black pawn on a7 (left edge, different rank)
-    pos.position[48] = Piece { color: Color::Black, piece_type: Type::Pawn };
+    place_piece(&mut pos, 48, Piece { color: Color::Black, piece_type: Type::Pawn });
 
     // Black pawn moves two squares
     let black_move = Move::new(48, 32, MoveType::Normal);
@@ -56,7 +56,7 @@ fn test_en_passant_works_on_starting_squares() {
     let mut pos = empty_board();
 
     // White pawn on d2 (starting square)
-    pos.position[11] = Piece { color: Color::White, piece_type: Type::Pawn };
+    place_piece(&mut pos, 11, Piece { color: Color::White, piece_type: Type::Pawn });
 
     // Move it two squares to d4
     let move1 = Move::new(11, 27, MoveType::Normal);
@@ -67,7 +67,7 @@ fn test_en_passant_works_on_starting_squares() {
     pos.mk_move(move2);
 
     // Black pawn on e7
-    pos.position[52] = Piece { color: Color::Black, piece_type: Type::Pawn };
+    place_piece(&mut pos, 52, Piece { color: Color::Black, piece_type: Type::Pawn });
 
     // Black pawn moves two squares to e5 (now adjacent to white pawn on d5)
     let move3 = Move::new(52, 36, MoveType::Normal);
@@ -85,8 +85,8 @@ fn test_en_passant_execution() {
     let mut pos = empty_board();
 
     // Setup: White pawn on e5, black pawn on d7
-    pos.position[36] = Piece { color: Color::White, piece_type: Type::Pawn };
-    pos.position[51] = Piece { color: Color::Black, piece_type: Type::Pawn };
+    place_piece(&mut pos, 36, Piece { color: Color::White, piece_type: Type::Pawn });
+    place_piece(&mut pos, 51, Piece { color: Color::Black, piece_type: Type::Pawn });
 
     // Black moves d7-d5
     pos.mk_move(Move::new(51, 35, MoveType::Normal));
@@ -119,17 +119,17 @@ fn test_en_passant_direction_white() {
     let mut pos = empty_board();
 
     // Place white pawn at d4 (index 27 = row 3, col 3)
-    pos.position[27] = Piece { color: Color::White, piece_type: Type::Pawn };
+    place_piece(&mut pos, 27, Piece { color: Color::White, piece_type: Type::Pawn });
 
     // Place black pawn at c4 (index 26 = row 3, col 2) - adjacent to white pawn
-    pos.position[26] = Piece { color: Color::Black, piece_type: Type::Pawn };
+    place_piece(&mut pos, 26, Piece { color: Color::Black, piece_type: Type::Pawn });
 
     // Simulate the previous move: c6->c4 (index 42->26, distance = 16)
     pos.prev_moves = vec![Move::new(42, 26, MoveType::Normal)];
 
     // Place kings
-    pos.position[4] = Piece { color: Color::White, piece_type: Type::King };
-    pos.position[60] = Piece { color: Color::Black, piece_type: Type::King };
+    place_piece(&mut pos, 4, Piece { color: Color::White, piece_type: Type::King });
+    place_piece(&mut pos, 60, Piece { color: Color::Black, piece_type: Type::King });
 
     let moves = pos.legal_moves(27);
 
@@ -145,17 +145,17 @@ fn test_en_passant_direction_black() {
     let mut pos = empty_board();
 
     // Place black pawn at d5 (index 35 = row 4, col 3)
-    pos.position[35] = Piece { color: Color::Black, piece_type: Type::Pawn };
+    place_piece(&mut pos, 35, Piece { color: Color::Black, piece_type: Type::Pawn });
 
     // Place white pawn at e5 (index 36 = row 4, col 4) - adjacent to black pawn
-    pos.position[36] = Piece { color: Color::White, piece_type: Type::Pawn };
+    place_piece(&mut pos, 36, Piece { color: Color::White, piece_type: Type::Pawn });
 
     // Simulate the previous move: e3->e5 (index 20->36, distance = 16)
     pos.prev_moves = vec![Move::new(20, 36, MoveType::Normal)];
 
     // Place kings
-    pos.position[4] = Piece { color: Color::White, piece_type: Type::King };
-    pos.position[60] = Piece { color: Color::Black, piece_type: Type::King };
+    place_piece(&mut pos, 4, Piece { color: Color::White, piece_type: Type::King });
+    place_piece(&mut pos, 60, Piece { color: Color::Black, piece_type: Type::King });
 
     let moves = pos.legal_moves(35);
 

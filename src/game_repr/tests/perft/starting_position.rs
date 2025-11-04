@@ -29,3 +29,9 @@ fn test_perft_starting_position_depth_5() {
     let pos = Position::default();
     assert_eq!(pos.perft(5), 4865609);
 }
+
+#[test]
+fn test_perft_starting_position_depth_6() {
+    let pos = Position::default();
+    assert_eq!(pos.perft(6), 119060324);
+}

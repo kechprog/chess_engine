@@ -14,26 +14,26 @@ fn test_pawn_edge_square_capture_bug() {
     let mut pos = empty_board();
 
     // Place black pawn at a3 (index 16 - left edge)
-    pos.position[16] = Piece {
+    place_piece(&mut pos, 16, Piece {
         color: Color::Black,
         piece_type: Type::Pawn,
-    };
+    });
 
     // Place white rook at h1 (index 7 - should NOT be capturable by a3 pawn!)
-    pos.position[7] = Piece {
+    place_piece(&mut pos, 7, Piece {
         color: Color::White,
         piece_type: Type::Rook,
-    };
+    });
 
     // Place white king and black king (required for legal moves)
-    pos.position[4] = Piece {
+    place_piece(&mut pos, 4, Piece {
         color: Color::White,
         piece_type: Type::King,
-    };
-    pos.position[60] = Piece {
+    });
+    place_piece(&mut pos, 60, Piece {
         color: Color::Black,
         piece_type: Type::King,
-    };
+    });
 
     let moves = pos.legal_moves(16);
 
@@ -50,26 +50,26 @@ fn test_pawn_edge_square_right_edge() {
     let mut pos = empty_board();
 
     // Place white pawn at h3 (index 23 - right edge)
-    pos.position[23] = Piece {
+    place_piece(&mut pos, 23, Piece {
         color: Color::White,
         piece_type: Type::Pawn,
-    };
+    });
 
     // Place black rook at a5 (index 32 - should NOT be capturable!)
-    pos.position[32] = Piece {
+    place_piece(&mut pos, 32, Piece {
         color: Color::Black,
         piece_type: Type::Rook,
-    };
+    });
 
     // Place kings
-    pos.position[4] = Piece {
+    place_piece(&mut pos, 4, Piece {
         color: Color::White,
         piece_type: Type::King,
-    };
-    pos.position[60] = Piece {
+    });
+    place_piece(&mut pos, 60, Piece {
         color: Color::Black,
         piece_type: Type::King,
-    };
+    });
 
     let moves = pos.legal_moves(23);
 

@@ -1,5 +1,3 @@
-use image::ColorType;
-use std::{error::Error, rc::Rc};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Type {

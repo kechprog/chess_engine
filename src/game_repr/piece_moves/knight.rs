@@ -1,12 +1,12 @@
 use crate::game_repr::{Move, MoveType};
 use super::super::{
-    piece::{Piece, Type},
+    piece::Type,
     position::Position
 };
 
 impl Position {
     pub fn knight_moves(&self, idx: usize) -> Vec<Move> {
-        let mut moves = vec![];
+        let mut moves = Vec::with_capacity(8);  // Knights have max 8 moves
         let idx_x = idx % 8;
         let idx_y = idx / 8;
 

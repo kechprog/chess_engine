@@ -1,7 +1,7 @@
 use crate::game_repr::{MoveType, Move, Color};
 
 use super::super::{
-    piece::{Piece, Type},
+    piece::Type,
     position::Position
 };
 
