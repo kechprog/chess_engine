@@ -681,15 +681,18 @@ impl Position {
                 // Filter moves based on pin status and check status
                 let is_pinned = (pinned_pieces & (1u64 << square)) != 0;
                 let is_king = piece_type == Type::King;
-                let is_pawn = piece_type == Type::Pawn;
-                let is_knight = piece_type == Type::Knight;
 
-                if is_king || in_check || is_pawn || is_knight {
-                    // These cases need full validation:
-                    // - King moves (can't rely on pins)
-                    // - Moves when in check
-                    // - Pawn moves (complex rules: forward vs capture, en passant, promotion)
-                    // - Knight moves (pinned knights can't move at all, but easier to validate than compute)
+                if is_king {
+                    // King moves always need validation (can't rely on pins)
+                    let mut i = moves.len();
+                    while i > initial_len {
+                        i -= 1;
+                        if !self.is_move_legal(moves[i]) {
+                            moves.swap_remove(i);
+                        }
+                    }
+                } else if in_check {
+                    // When in check, all moves need validation to ensure they block/capture
                     let mut i = moves.len();
                     while i > initial_len {
                         i -= 1;
@@ -698,7 +701,7 @@ impl Position {
                         }
                     }
                 } else if is_pinned {
-                    // For sliding pieces (rook, bishop, queen): only allow moves along the pin ray
+                    // Pinned pieces: only allow moves along the pin ray
                     let pin_ray = pin_rays[square];
                     let mut i = moves.len();
                     while i > initial_len {
@@ -708,8 +711,20 @@ impl Position {
                             moves.swap_remove(i);
                         }
                     }
+                } else if piece_type == Type::Pawn {
+                    // Pawns: validate only en passant moves (can expose king on rank)
+                    // Forward moves and normal captures are safe if not pinned
+                    let mut i = moves.len();
+                    while i > initial_len {
+                        i -= 1;
+                        if moves[i].move_type() == MoveType::EnPassant {
+                            if !self.is_move_legal(moves[i]) {
+                                moves.swap_remove(i);
+                            }
+                        }
+                    }
                 }
-                // else: Not pinned, not king, not in check, not pawn/knight - all pseudo-legal moves are legal!
+                // else: Not pinned, not king, not in check, not pawn - all pseudo-legal moves are legal!
             }
         }
     }
