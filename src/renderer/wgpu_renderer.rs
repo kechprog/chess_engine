@@ -818,9 +818,16 @@ impl Renderer for WgpuRenderer {
     }
 
     fn coord_to_tile(&self, coords: PhysicalPosition<f64>, pov: Color) -> Option<u8> {
+        // Get scale factor to convert physical pixels to logical pixels
+        let scale_factor = self.window.scale_factor();
+
+        // Adjust coordinates for scale factor
+        let adjusted_x = coords.x / scale_factor;
+        let adjusted_y = coords.y / scale_factor;
+
         let (x, y) = (
-            (coords.x / self.window_size.0 as f64) * 2.0,
-            (coords.y / self.window_size.1 as f64) * 2.0,
+            (adjusted_x / self.window_size.0 as f64) * 2.0,
+            (adjusted_y / self.window_size.1 as f64) * 2.0,
         );
 
         let tile_w = self.board_dimensions.0 / 8.0;
