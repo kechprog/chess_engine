@@ -1,5 +1,5 @@
-pub mod agent;
-pub use agent::*;
+pub mod player;
+pub use player::*;
 
-pub mod two_player;
-pub use two_player::*;
+pub mod human_player;
+pub use human_player::*;

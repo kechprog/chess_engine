@@ -1,6 +1,6 @@
 #![allow(unused)]
 
-use agent::{Agent, TwoPlayerAgent};
+use orchestrator::Orchestrator;
 use renderer::wgpu_renderer::WgpuRenderer;
 use std::sync::Arc;
 use winit::{
@@ -11,18 +11,20 @@ use winit::{
 };
 
 mod agent;
+mod board;
 mod game_repr;
+mod orchestrator;
 mod renderer;
 
 use game_repr::{Move, MoveType};
 
 struct App {
-    agent: Option<TwoPlayerAgent>,
+    orchestrator: Option<Orchestrator>,
 }
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.agent.is_none() {
+        if self.orchestrator.is_none() {
             let window_attrs = WindowAttributes::default()
                 .with_title("chess")
                 .with_inner_size(winit::dpi::LogicalSize::new(800.0, 800.0));
@@ -33,7 +35,14 @@ impl ApplicationHandler for App {
             let _ = window.request_inner_size(winit::dpi::PhysicalSize::new(800, 800));
 
             let renderer = pollster::block_on(WgpuRenderer::new(window.clone()));
-            self.agent = Some(TwoPlayerAgent::new(renderer, window.clone()));
+            self.orchestrator = Some(Orchestrator::new(window.clone(), renderer));
+
+            // TODO: Remove this auto-start once menu UI is implemented
+            // Automatically start PvP game for testing
+            if let Some(orch) = &mut self.orchestrator {
+                orch.set_game_mode(orchestrator::GameMode::PvP);
+                orch.start_game();
+            }
 
             // Request initial redraw to render the board
             window.request_redraw();
@@ -46,13 +55,18 @@ impl ApplicationHandler for App {
         window_id: winit::window::WindowId,
         event: WindowEvent,
     ) {
-        if let Some(agent) = &mut self.agent {
-            // Convert WindowEvent to Event for agent compatibility
-            let event = winit::event::Event::WindowEvent {
-                window_id,
-                event,
-            };
-            agent.handle_input(event, event_loop);
+        // Handle app-level events first
+        match &event {
+            WindowEvent::CloseRequested => {
+                event_loop.exit();
+                return;
+            }
+            _ => {}
+        }
+
+        // Delegate to orchestrator
+        if let Some(orchestrator) = &mut self.orchestrator {
+            orchestrator.handle_event(event);
         }
     }
 
@@ -60,6 +74,6 @@ impl ApplicationHandler for App {
 
 fn main() {
     let event_loop = EventLoop::new().expect("Failed to create event loop");
-    let mut app = App { agent: None };
+    let mut app = App { orchestrator: None };
     let _ = event_loop.run_app(&mut app);
 }
