@@ -4,7 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a chess game implementation in Rust with OpenGL rendering using the Glium library. The project includes chess game logic, board visualization, and interactive gameplay for two players.
+This is a chess game implementation in Rust with modern WGPU rendering. The project includes comprehensive chess game logic, board visualization, and interactive gameplay.
+
+**Current State**: Functional two-player chess game with complete rule implementation and testing.
+
+**Architecture Refactor in Progress**: Transitioning to a flexible component-based architecture supporting multiple game modes (Player vs Player, Player vs AI, etc.). See [ARCHITECTURE.md](./ARCHITECTURE.md) for complete architectural documentation and refactor plan.
 
 ## Build and Run
 
@@ -24,13 +28,22 @@ cargo test
 
 ## Architecture
 
-### Module Structure
+**For comprehensive architectural documentation, see [ARCHITECTURE.md](./ARCHITECTURE.md)**
 
-The codebase is organized into three main modules:
+The architecture is currently being refactored from a monolithic design to a component-based system:
+- **Orchestrator**: Root component managing game modes and lifecycle
+- **Board**: Shared state object for game logic and rendering
+- **Player Trait**: Abstraction for move providers (Human, AI, Network)
 
-1. **game_repr** - Core chess game representation and logic
-2. **board_drawer** - OpenGL rendering of the chess board
-3. **agent** - Event handling and game state management
+### Current Module Structure
+
+The codebase is organized into main modules:
+
+1. **game_repr** - Core chess game representation and logic (stable, not changing)
+2. **renderer** - WGPU-based rendering (replacing old board_drawer)
+3. **agent** - Event handling and game state management (being refactored)
+4. **orchestrator** - Application lifecycle management (new, to be implemented)
+5. **board** - Shared board state (new, to be implemented)
 
 ### game_repr Module
 
@@ -51,18 +64,17 @@ Located in `src/game_repr/`, this module handles all chess logic:
 
 - **piece_moves/**: Individual files for each piece type's move generation logic (pawn.rs, rook.rs, knight.rs, bishop.rs, queen.rs, king.rs)
 
-### board_drawer Module
+### renderer Module
 
-Located in `src/board_drawer/`, handles all rendering:
+Located in `src/renderer/`, handles all graphics rendering:
 
-- **board.rs**: Main `BoardDrawer` struct that orchestrates rendering
+- **wgpu_renderer.rs**: Main `WgpuRenderer` struct implementing the Renderer trait
   - `draw_position()`: Renders the complete board state with optional selected tile highlight
   - `coord_to_tile()`: Converts mouse coordinates to board square indices
   - Supports both White and Black POV (reverses board when pov is Black)
   - Maintains aspect ratio for the board regardless of window dimensions
-
-- **tile_drawer.rs**: Renders individual chess pieces on squares
-- **dot_drawer.rs**: Renders dots indicating legal moves for selected piece
+  - Uses WGPU (modern graphics API) with custom shaders for tiles, pieces, and legal move indicators
+  - Implements texture caching for piece images
 
 ### agent Module
 
@@ -82,13 +94,18 @@ Located in `src/agent/`, handles game flow and user interaction:
 - Index 63 = h8 (top-right from White's perspective)
 - Row calculation: `row = idx / 8`, Column: `col = idx % 8`
 
-### Rendering Flow
+### Rendering Flow (Current - Being Refactored)
 
-1. Main event loop in `src/main.rs` creates a Glium display and `TwoPlayerAgent`
+1. Main event loop in `src/main.rs` creates a window and `TwoPlayerAgent`
 2. Agent handles input events (mouse clicks, window resize, etc.)
-3. On relevant events, calls `BoardDrawer.draw_position()`
-4. BoardDrawer renders tiles, pieces, and legal move indicators
+3. On redraw events, calls `WgpuRenderer.draw_position()`
+4. Renderer uses WGPU to render:
+   - Colored tiles (light/dark squares, selection highlight)
+   - Textured pieces (with alpha blending)
+   - Legal move indicators (semi-transparent dots)
 5. When POV is Black, indices are reversed (63 - idx) for rendering
+
+**Future**: Rendering will be managed by the Board component, which owns the Renderer
 
 ### Move Execution
 
@@ -115,8 +132,19 @@ Located in `src/agent/`, handles game flow and user interaction:
 
 ## Known TODOs and Limitations
 
-From code comments:
-- Castling move type is not fully implemented in `mk_move()` (position.rs:83)
-- FEN parsing doesn't handle castling rights notation (position.rs:27)
-- TwoPlayerAgent.mouse_click() needs refactoring (two_player.rs:27-28)
-- Move struct has unused methods `from_u8()` and `to_u8()` (moves.rs:59-64)
+### Architecture Refactor
+- **In Progress**: Transitioning to Orchestrator + Board + Player architecture (see ARCHITECTURE.md)
+- TwoPlayerAgent will be replaced by Orchestrator + HumanPlayer
+- Legacy `chess_repr/` module needs to be deleted
+
+### Code Quality
+- TwoPlayerAgent.mouse_click() needs refactoring (will be replaced in new architecture)
+- Move struct has unused methods `from_u8()` and `to_u8()` (moves.rs)
+- Asset paths are hardcoded (should use `include_bytes!()` or proper asset system)
+
+### Features to Add
+- Game mode selection menu
+- AI opponent (Player trait designed to support this)
+- Undo/Redo functionality
+- Save/Load games (PGN format)
+- Time controls
