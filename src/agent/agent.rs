@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use winit::{event::Event, event_loop::ActiveEventLoop};
 
 /*
