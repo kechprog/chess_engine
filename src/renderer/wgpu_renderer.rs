@@ -818,12 +818,16 @@ impl Renderer for WgpuRenderer {
     }
 
     fn coord_to_tile(&self, coords: PhysicalPosition<f64>, pov: Color) -> Option<u8> {
-        // Get scale factor to convert physical pixels to logical pixels
-        let scale_factor = self.window.scale_factor();
+        // WASM needs scale factor adjustment due to browser CSS pixel coordinate system
+        // Native platforms receive coords already in physical pixels matching window_size
+        #[cfg(target_arch = "wasm32")]
+        let (adjusted_x, adjusted_y) = {
+            let scale_factor = self.window.scale_factor();
+            (coords.x / scale_factor, coords.y / scale_factor)
+        };
 
-        // Adjust coordinates for scale factor
-        let adjusted_x = coords.x / scale_factor;
-        let adjusted_y = coords.y / scale_factor;
+        #[cfg(not(target_arch = "wasm32"))]
+        let (adjusted_x, adjusted_y) = (coords.x, coords.y);
 
         let (x, y) = (
             (adjusted_x / self.window_size.0 as f64) * 2.0,
