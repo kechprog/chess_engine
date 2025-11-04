@@ -1,3 +1,4 @@
+use crate::agent::player::GameResult;
 use crate::game_repr::{Color, Move, Piece, Position};
 use crate::renderer::Renderer;
 use winit::dpi::PhysicalPosition;
@@ -278,6 +279,27 @@ impl Board {
         self.position.is_in_check(color)
     }
 
+    /// Reset the board to a new position from FEN string.
+    ///
+    /// # Arguments
+    ///
+    /// * `fen` - FEN string for the position, or empty string for default starting position
+    ///
+    /// # Side Effects
+    ///
+    /// - Clears the selected tile
+    /// - Clears the legal moves cache
+    /// - Resets the position
+    pub fn reset_position(&mut self, fen: &str) {
+        self.position = if fen.is_empty() {
+            Position::default()
+        } else {
+            Position::from_fen(fen)
+        };
+        self.selected_tile = None;
+        self.legal_moves_cache.clear();
+    }
+
     // ===========================
     // UI Interaction
     // ===========================
@@ -425,6 +447,36 @@ impl Board {
         self.renderer.draw_position(&self.position, self.selected_tile, self.pov);
     }
 
+    /// Draw the menu screen.
+    ///
+    /// # Arguments
+    ///
+    /// * `show_coming_soon` - If true, display "Coming Soon!" overlay instead of menu buttons
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// // When in menu mode
+    /// board.draw_menu(false);
+    /// ```
+    pub fn draw_menu(&mut self, show_coming_soon: bool) {
+        self.renderer.draw_menu(show_coming_soon);
+    }
+
+    /// Check if a screen coordinate is within a button's bounds (for menu).
+    ///
+    /// # Arguments
+    ///
+    /// * `coords` - Physical position in pixels
+    /// * `button_index` - Which button to check (0 = PvP, 1 = PvAI)
+    ///
+    /// # Returns
+    ///
+    /// * `true` if the coordinate is within the button bounds
+    pub fn is_coord_in_button(&self, coords: PhysicalPosition<f64>, button_index: usize) -> bool {
+        self.renderer.is_coord_in_button(coords, button_index)
+    }
+
     /// Set the point of view for rendering.
     ///
     /// This determines which color is shown at the bottom of the board.
@@ -471,6 +523,24 @@ impl Board {
     pub fn resize(&mut self, new_size: (u32, u32)) {
         self.renderer.resize(new_size);
     }
+
+    /// Draw the game end overlay.
+    ///
+    /// This draws the current board position with an overlay showing the game result.
+    ///
+    /// # Arguments
+    ///
+    /// * `result` - The game result to display
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// // When game ends
+    /// board.draw_game_end(GameResult::WhiteWins);
+    /// ```
+    pub fn draw_game_end(&mut self, result: GameResult) {
+        self.renderer.draw_game_end(&self.position, self.selected_tile, self.pov, result);
+    }
 }
 
 #[cfg(test)]
@@ -492,6 +562,18 @@ mod tests {
         }
 
         fn resize(&mut self, _new_size: (u32, u32)) {
+            // No-op for tests
+        }
+
+        fn draw_menu(&mut self, _show_coming_soon: bool) {
+            // No-op for tests
+        }
+
+        fn is_coord_in_button(&self, _coords: PhysicalPosition<f64>, _button_index: usize) -> bool {
+            false // Always return false for simplicity
+        }
+
+        fn draw_game_end(&mut self, _position: &Position, _selected_tile: Option<u8>, _pov: Color, _result: GameResult) {
             // No-op for tests
         }
     }

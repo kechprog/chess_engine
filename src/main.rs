@@ -81,13 +81,6 @@ impl ApplicationHandler for App {
             let renderer = pollster::block_on(WgpuRenderer::new(window.clone()));
             self.orchestrator = Some(Orchestrator::new(window.clone(), renderer));
 
-            // TODO: Remove this auto-start once menu UI is implemented
-            // Automatically start PvP game for testing
-            if let Some(orch) = &mut self.orchestrator {
-                orch.set_game_mode(orchestrator::GameMode::PvP);
-                orch.start_game();
-            }
-
             self.initializing = false;
             window.request_redraw();
         }
@@ -166,13 +159,6 @@ impl ApplicationHandler<UserEvent> for App {
             UserEvent::RendererReady(renderer) => {
                 if let Some(window) = &self.window {
                     self.orchestrator = Some(Orchestrator::new(window.clone(), *renderer));
-
-                    // TODO: Remove this auto-start once menu UI is implemented
-                    // Automatically start PvP game for testing
-                    if let Some(orch) = &mut self.orchestrator {
-                        orch.set_game_mode(orchestrator::GameMode::PvP);
-                        orch.start_game();
-                    }
 
                     self.initializing = false;
                     window.request_redraw();
