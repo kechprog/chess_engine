@@ -1315,4 +1315,163 @@ impl Renderer for WgpuRenderer {
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();
     }
+
+    fn draw_promotion_selection(&mut self, position: &Position, selected_tile: Option<u8>, pov: Color, promoting_color: Color) {
+        // First, draw the board position underneath
+        self.draw_position(position, selected_tile, pov);
+
+        // Now draw promotion selection overlay on top
+        let output = self.surface.get_current_texture().unwrap();
+        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Promotion Selection Overlay Encoder"),
+        });
+
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Promotion Selection Overlay Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load, // Load existing frame (the board)
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
+
+            render_pass.set_pipeline(&self.tile_pipeline);
+            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+
+            // Draw semi-transparent dark background overlay
+            let overlay_color = [0.0, 0.0, 0.0, 0.7]; // Dark semi-transparent
+            let vertices = [
+                TileVertex { position: [-1.0, 1.0], color: overlay_color },
+                TileVertex { position: [1.0, 1.0], color: overlay_color },
+                TileVertex { position: [-1.0, -1.0], color: overlay_color },
+                TileVertex { position: [1.0, -1.0], color: overlay_color },
+            ];
+
+            let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Promotion Overlay Vertex Buffer"),
+                contents: bytemuck::cast_slice(&vertices),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
+
+            render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+            render_pass.draw_indexed(0..6, 0, 0..1);
+
+            // Draw the 4 promotion pieces horizontally centered
+            render_pass.set_pipeline(&self.piece_pipeline);
+
+            // Piece positions (centered horizontally in NDC coordinates)
+            // We'll space them evenly: Queen, Rook, Bishop, Knight
+            let piece_size = 0.3; // Size of each piece in NDC
+            let spacing = 0.35; // Spacing between pieces
+            let y_pos = 0.0; // Centered vertically
+
+            let piece_positions = [
+                -spacing * 1.5, // Queen (leftmost)
+                -spacing * 0.5, // Rook
+                spacing * 0.5,  // Bishop
+                spacing * 1.5,  // Knight (rightmost)
+            ];
+
+            let piece_types = [Type::Queen, Type::Rook, Type::Bishop, Type::Knight];
+
+            for (i, &piece_type) in piece_types.iter().enumerate() {
+                let piece = Piece {
+                    piece_type,
+                    color: promoting_color,
+                };
+
+                // Load texture
+                self.load_texture(piece);
+                let (_, _, bind_group) = self.texture_cache.get(&piece).unwrap();
+
+                // Create quad for this piece
+                let x_center = piece_positions[i];
+                let vertices = [
+                    TexturedVertex {
+                        position: [x_center - piece_size / 2.0, y_pos + piece_size / 2.0],
+                        tex_coords: [0.0, 0.0],
+                    },
+                    TexturedVertex {
+                        position: [x_center + piece_size / 2.0, y_pos + piece_size / 2.0],
+                        tex_coords: [1.0, 0.0],
+                    },
+                    TexturedVertex {
+                        position: [x_center - piece_size / 2.0, y_pos - piece_size / 2.0],
+                        tex_coords: [0.0, 1.0],
+                    },
+                    TexturedVertex {
+                        position: [x_center + piece_size / 2.0, y_pos - piece_size / 2.0],
+                        tex_coords: [1.0, 1.0],
+                    },
+                ];
+
+                let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Promotion Piece Vertex Buffer"),
+                    contents: bytemuck::cast_slice(&vertices),
+                    usage: wgpu::BufferUsages::VERTEX,
+                });
+
+                render_pass.set_bind_group(0, bind_group, &[]);
+                render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+                render_pass.draw_indexed(0..6, 0, 0..1);
+            }
+        }
+
+        self.queue.submit(std::iter::once(encoder.finish()));
+        output.present();
+    }
+
+    fn get_promotion_piece_at_coords(&self, coords: PhysicalPosition<f64>) -> Option<Type> {
+        // Convert screen coordinates to NDC
+        #[cfg(target_arch = "wasm32")]
+        let (adjusted_x, adjusted_y) = {
+            let scale_factor = self.window.scale_factor();
+            (coords.x / scale_factor, coords.y / scale_factor)
+        };
+
+        #[cfg(not(target_arch = "wasm32"))]
+        let (adjusted_x, adjusted_y) = (coords.x, coords.y);
+
+        // Convert to NDC coordinates (-1 to 1)
+        let ndc_x = (adjusted_x / self.window_size.0 as f64) * 2.0 - 1.0;
+        let ndc_y = -((adjusted_y / self.window_size.1 as f64) * 2.0 - 1.0); // Flip Y axis
+
+        // Piece positions and sizes (matching draw_promotion_selection)
+        let piece_size = 0.3;
+        let spacing = 0.35;
+        let y_pos = 0.0;
+
+        let piece_positions = [
+            -spacing * 1.5, // Queen
+            -spacing * 0.5, // Rook
+            spacing * 0.5,  // Bishop
+            spacing * 1.5,  // Knight
+        ];
+
+        let piece_types = [Type::Queen, Type::Rook, Type::Bishop, Type::Knight];
+
+        // Check each piece's bounding box
+        for (i, &piece_type) in piece_types.iter().enumerate() {
+            let x_center = piece_positions[i];
+            let x_min = x_center - piece_size / 2.0;
+            let x_max = x_center + piece_size / 2.0;
+            let y_min = y_pos - piece_size / 2.0;
+            let y_max = y_pos + piece_size / 2.0;
+
+            if ndc_x >= x_min && ndc_x <= x_max && ndc_y >= y_min && ndc_y <= y_max {
+                return Some(piece_type);
+            }
+        }
+
+        None
+    }
 }

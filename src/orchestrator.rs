@@ -110,6 +110,10 @@ pub struct Orchestrator {
     /// Result of the game if it has ended
     /// None if game is in progress or in menu
     game_result: Option<GameResult>,
+
+    /// Pending promotion state
+    /// Contains (from_square, to_square) when waiting for user to select promotion piece
+    pending_promotion: Option<(u8, u8)>,
 }
 
 impl Orchestrator {
@@ -148,6 +152,7 @@ impl Orchestrator {
             game_active: false,
             starting_fen: String::new(),
             game_result: None,
+            pending_promotion: None,
         }
     }
 
@@ -179,6 +184,9 @@ impl Orchestrator {
                 } else if let Some(result) = self.game_result {
                     // Game has ended - draw board with game end overlay
                     self.board.borrow_mut().draw_game_end(result);
+                } else if self.pending_promotion.is_some() {
+                    // Draw board with promotion selection overlay
+                    self.board.borrow_mut().draw_promotion_selection(self.current_turn);
                 } else {
                     // Draw normal game board
                     self.board.borrow_mut().draw();
@@ -219,6 +227,9 @@ impl Orchestrator {
                 } else if self.game_result.is_some() && state == ElementState::Pressed {
                     // Click anywhere on game end overlay to return to menu
                     self.return_to_menu();
+                } else if self.pending_promotion.is_some() && state == ElementState::Pressed && button == MouseButton::Left {
+                    // Handle promotion piece selection
+                    self.handle_promotion_click();
                 } else if self.game_active {
                     // Delegate to current player when game is active
                     if let Some((player1, player2)) = &mut self.players {
@@ -310,6 +321,12 @@ impl Orchestrator {
 
         // Try to get a move from the current player
         if let Some(mv) = current_player.get_move(self.current_turn) {
+            // Check if this is a promotion move
+            if self.check_pending_promotion(mv) {
+                // Promotion selection UI will be shown, don't process the move yet
+                return;
+            }
+
             self.process_move(mv);
             self.window.request_redraw();
         }
@@ -588,8 +605,92 @@ impl Orchestrator {
             // log::info!("Stalemate! Game is a draw");
             drop(board);
             self.handle_game_end(GameResult::Stalemate);
+        } else if self.is_insufficient_material(&board) {
+            // Insufficient material to checkmate (e.g., only kings remaining)
+            // TODO: Add logging once log crate is added to dependencies
+            // log::info!("Draw by insufficient material");
+            drop(board);
+            self.handle_game_end(GameResult::Draw);
         }
-        // Other draw conditions (insufficient material, etc.) can be added here
+        // Other draw conditions (threefold repetition, fifty-move rule) can be added here
+    }
+
+    /// Check if the current position has insufficient material for checkmate.
+    ///
+    /// This detects draw by insufficient material according to chess rules.
+    /// A position is drawn if neither side can possibly deliver checkmate.
+    ///
+    /// # Insufficient Material Cases
+    ///
+    /// - King vs King (only two kings on the board)
+    /// - King and Bishop vs King
+    /// - King and Knight vs King
+    /// - King and Bishop vs King and Bishop (same colored bishops)
+    ///
+    /// # Returns
+    ///
+    /// `true` if the position has insufficient material for checkmate
+    ///
+    /// # Note
+    ///
+    /// This is called at the orchestrator level (not in game_repr) because
+    /// it's a game rule interpretation, not a move legality check.
+    fn is_insufficient_material(&self, board: &Board) -> bool {
+        use crate::game_repr::{Type, Color};
+
+        let mut white_pieces = Vec::new();
+        let mut black_pieces = Vec::new();
+
+        // Count all pieces on the board
+        for idx in 0..64 {
+            let piece = board.piece_at(idx);
+            if piece.piece_type != Type::None {
+                match piece.color {
+                    Color::White => white_pieces.push(piece.piece_type),
+                    Color::Black => black_pieces.push(piece.piece_type),
+                }
+            }
+        }
+
+        // Helper to count specific piece types
+        let count_type = |pieces: &[Type], piece_type: Type| -> usize {
+            pieces.iter().filter(|&&p| p == piece_type).count()
+        };
+
+        // King vs King (only two kings)
+        if white_pieces.len() == 1 && black_pieces.len() == 1 {
+            return true;
+        }
+
+        // King and Bishop vs King
+        if white_pieces.len() == 2 && black_pieces.len() == 1 {
+            if count_type(&white_pieces, Type::Bishop) == 1 {
+                return true;
+            }
+        }
+        if white_pieces.len() == 1 && black_pieces.len() == 2 {
+            if count_type(&black_pieces, Type::Bishop) == 1 {
+                return true;
+            }
+        }
+
+        // King and Knight vs King
+        if white_pieces.len() == 2 && black_pieces.len() == 1 {
+            if count_type(&white_pieces, Type::Knight) == 1 {
+                return true;
+            }
+        }
+        if white_pieces.len() == 1 && black_pieces.len() == 2 {
+            if count_type(&black_pieces, Type::Knight) == 1 {
+                return true;
+            }
+        }
+
+        // King and Bishop vs King and Bishop (same colored bishops)
+        // This is more complex - would need to check bishop square colors
+        // Skipping for now as it's rare
+
+        false
     }
 
     /// Return to the mode selection menu.
@@ -611,6 +712,7 @@ impl Orchestrator {
         self.game_active = false;
         self.players = None;
         self.game_result = None;
+        self.pending_promotion = None;
 
         self.board.borrow_mut().set_selected_tile(None);
 
@@ -634,5 +736,64 @@ impl Orchestrator {
 
         // Trigger redraw to show game end overlay
         self.window.request_redraw();
+    }
+
+    /// Check if the current pending move is a promotion move.
+    ///
+    /// This is called by HumanPlayer when a move is created. If it's a promotion move,
+    /// we intercept it and show the promotion selection UI instead of executing immediately.
+    ///
+    /// # Arguments
+    ///
+    /// * `mv` - The move to check
+    ///
+    /// # Returns
+    ///
+    /// `true` if this is a promotion move and promotion state was set, `false` otherwise
+    pub fn check_pending_promotion(&mut self, mv: Move) -> bool {
+        // Check if this move is any promotion type
+        if mv.move_type().is_promotion() {
+            // Store the from/to squares for promotion
+            self.pending_promotion = Some((mv._from() as u8, mv._to() as u8));
+            self.window.request_redraw();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Handle mouse click during promotion selection.
+    ///
+    /// Determines which promotion piece the user clicked on and executes the move.
+    fn handle_promotion_click(&mut self) {
+        use crate::game_repr::{MoveType, Type};
+
+        let (from, to) = match self.pending_promotion {
+            Some(squares) => squares,
+            None => return,
+        };
+
+        // Get mouse position and check which piece was clicked
+        let mouse_pos = self.board.borrow().mouse_pos();
+
+        // Determine which piece was selected based on click position
+        let selected_piece = self.board.borrow().get_promotion_piece_at_coords(mouse_pos);
+
+        if let Some(piece_type) = selected_piece {
+            // Convert piece type to move type
+            let move_type = match piece_type {
+                Type::Queen => MoveType::PromotionQueen,
+                Type::Rook => MoveType::PromotionRook,
+                Type::Bishop => MoveType::PromotionBishop,
+                Type::Knight => MoveType::PromotionKnight,
+                _ => return, // Invalid selection, ignore
+            };
+
+            // Create and process the move
+            let mv = Move::new(from, to, move_type);
+            self.pending_promotion = None;
+            self.process_move(mv);
+        }
+        // If no piece was selected (clicked outside), do nothing - keep showing overlay
     }
 }

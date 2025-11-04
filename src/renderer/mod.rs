@@ -56,4 +56,26 @@ pub trait Renderer {
     /// * `pov` - Point of view (White or Black) - determines board orientation
     /// * `result` - The game result to display
     fn draw_game_end(&mut self, position: &Position, selected_tile: Option<u8>, pov: Color, result: GameResult);
+
+    /// Draw the promotion piece selection overlay
+    ///
+    /// Shows 4 piece options (Queen, Rook, Bishop, Knight) for pawn promotion.
+    /// The overlay is drawn on top of the current board position.
+    ///
+    /// # Arguments
+    /// * `position` - The current board state (to draw underneath)
+    /// * `selected_tile` - Optional tile index (0-63) that is currently selected
+    /// * `pov` - Point of view (White or Black) - determines board orientation
+    /// * `promoting_color` - The color of the pawn being promoted
+    fn draw_promotion_selection(&mut self, position: &Position, selected_tile: Option<u8>, pov: Color, promoting_color: Color);
+
+    /// Check if screen coordinates are over a promotion piece option
+    ///
+    /// # Arguments
+    /// * `coords` - Physical position in pixels
+    ///
+    /// # Returns
+    /// * `Some(Type)` - The piece type if clicked on a piece (Queen, Rook, Bishop, or Knight)
+    /// * `None` - If not over any piece option
+    fn get_promotion_piece_at_coords(&self, coords: PhysicalPosition<f64>) -> Option<crate::game_repr::Type>;
 }
