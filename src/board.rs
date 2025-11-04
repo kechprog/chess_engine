@@ -541,6 +541,49 @@ impl Board {
     pub fn draw_game_end(&mut self, result: GameResult) {
         self.renderer.draw_game_end(&self.position, self.selected_tile, self.pov, result);
     }
+
+    /// Draw the promotion piece selection overlay.
+    ///
+    /// Shows 4 piece options (Queen, Rook, Bishop, Knight) for the user to choose from
+    /// when promoting a pawn.
+    ///
+    /// # Arguments
+    ///
+    /// * `promoting_color` - The color of the pawn being promoted
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// // When a pawn reaches the back rank
+    /// board.draw_promotion_selection(Color::White);
+    /// ```
+    pub fn draw_promotion_selection(&mut self, promoting_color: Color) {
+        self.renderer.draw_promotion_selection(&self.position, self.selected_tile, self.pov, promoting_color);
+    }
+
+    /// Get the promotion piece type at the given screen coordinates.
+    ///
+    /// Used to detect which piece the user clicked on during promotion selection.
+    ///
+    /// # Arguments
+    ///
+    /// * `coords` - Physical position in pixels
+    ///
+    /// # Returns
+    ///
+    /// * `Some(Type)` - The piece type if clicked on a piece option
+    /// * `None` - If not over any piece option
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// if let Some(piece_type) = board.get_promotion_piece_at_coords(mouse_pos) {
+    ///     // User clicked on a promotion piece
+    /// }
+    /// ```
+    pub fn get_promotion_piece_at_coords(&self, coords: PhysicalPosition<f64>) -> Option<crate::game_repr::Type> {
+        self.renderer.get_promotion_piece_at_coords(coords)
+    }
 }
 
 #[cfg(test)]
