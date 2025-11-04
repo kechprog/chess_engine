@@ -13,8 +13,8 @@
 | Baseline (bitboards) | ✅ | - | 12.4s | 1.00× |
 | #1: Move list recycling | ✅ | 2.34× | 5.31s | 2.34× |
 | #2: Bulk move validation | ✅ | 1.22× | 4.34s | 2.86× |
-| #3: Optimize is_square_attacked | ⏸️ | Est. 1.05-1.1× | TBD | TBD |
-| #4-7: Additional optimizations | ⏸️ | Est. 1.1-1.2× | TBD | TBD |
+| #3: Optimize is_square_attacked | ❌ | -2% to -5% | Skipped | 2.86× |
+| #4-7: Additional optimizations | ⏸️ | Est. 1.05-1.15× | TBD | TBD |
 
 ## Flamegraph Analysis Summary
 
@@ -182,35 +182,56 @@ The actual improvement (22% faster) exceeded the estimated 5-10% because:
 
 ### 3. [MEDIUM IMPACT] Optimize is_square_attacked
 **Estimated Speedup:** 3-5%
-**Status:** Not implemented
+**Status:** ❌ NOT BENEFICIAL - Skipped (2025-11-04)
+**Actual Result:** 2-5% performance regression
 **Difficulty:** Medium
 
 **Problem:** Current implementation (position.rs:283-359) checks all piece types sequentially. Called very frequently during move validation.
 
-**Solution:**
-1. Add early termination after first attacker found
-2. Check most likely attackers first (pawns, knights more common than queens)
-3. Consider implementing magic bitboards for sliding pieces
-4. Cache attack maps for frequently checked squares (especially king positions)
+**Attempted Solutions:**
+Two different optimization strategies were tested:
 
-**Reordering by Likelihood:**
-```rust
-// Check in order of commonality:
-// 1. Pawns (most common)
-// 2. Knights
-// 3. King
-// 4. Bishops/Queens on diagonals
-// 5. Rooks/Queens on orthogonals
-```
+1. **Strategy A: Bitboard Caching + Early Exit**
+   - Cached slider bitboards (bishops | queens, rooks | queens)
+   - Added early exit when no sliders present
+   - Used bitboard checks instead of piece array lookups
+   - Result: **4.46s (2.8% slower than 4.34s baseline)** ❌
 
-**Implementation Notes:**
-- Add early return `return true` as soon as attacker found
-- Reorder checks by statistical likelihood
-- Consider separate fast path for king safety checks
-- Profile to verify improvement
+2. **Strategy B: Manual Loop Unrolling**
+   - Manually unrolled 8-direction ray checks
+   - Kept original piece array lookup approach
+   - Result: **4.56s (5.1% slower than 4.34s baseline)** ❌
 
-**Files to Modify:**
-- src/game_repr/position.rs (is_square_attacked function)
+**Why Optimizations Failed:**
+
+1. **Modern Compiler Already Optimal**: LLVM (Rust's compiler) already:
+   - Unrolls loops automatically when beneficial
+   - Optimizes register allocation better than manual unrolling
+   - Vectorizes operations where possible
+
+2. **Code Size vs Performance Tradeoff**:
+   - Manual unrolling increased instruction cache pressure
+   - More local variables increased register pressure
+   - Harder for compiler to optimize complex unrolled code
+
+3. **Bitboard Caching Overhead**:
+   - Extra bitboard lookups (3 calls to `pieces_of_type`)
+   - Additional bitwise OR operations
+   - Branch misprediction potential from early exit checks
+
+4. **Already Well-Optimized Baseline**:
+   - Early termination already present ✓
+   - Optimal check ordering (pawns → knights → king → sliders) ✓
+   - Efficient ray tracing with bitscan ✓
+   - Minimal overhead ✓
+
+**Conclusion:**
+The original implementation is already optimal. The function benefits more from:
+- **Reduced call frequency** (already achieved via bulk move validation in optimization #2)
+- **Compiler optimizations** (trust LLVM to do its job)
+- **Simple, maintainable code** (easier for compiler to optimize)
+
+**Decision:** Keep original implementation. No changes made to codebase.
 
 ---
 
