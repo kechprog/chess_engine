@@ -1,3 +1,4 @@
+use crate::assets;
 use crate::game_repr::{Color, Piece, Position, Type};
 use crate::renderer::Renderer;
 use std::collections::HashMap;
@@ -174,7 +175,14 @@ pub struct WgpuRenderer {
 
 impl WgpuRenderer {
     pub async fn new(window: Arc<Window>) -> Self {
-        let window_size = window.inner_size();
+        let mut window_size = window.inner_size();
+
+        // Handle WASM canvas initialization timing - dimensions might be 0x0 initially
+        if window_size.width == 0 || window_size.height == 0 {
+            window_size.width = 800;
+            window_size.height = 800;
+        }
+
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
             ..Default::default()
@@ -458,8 +466,8 @@ impl WgpuRenderer {
 
     fn load_piece_texture(&self, piece: Piece) -> (wgpu::Texture, wgpu::TextureView, wgpu::BindGroup) {
         let prefix = match piece.color {
-            Color::White => "w_",
-            Color::Black => "b_",
+            Color::White => "w",
+            Color::Black => "b",
         };
         let name = match piece.piece_type {
             Type::Pawn => "pawn",
@@ -471,8 +479,10 @@ impl WgpuRenderer {
             Type::None => panic!("Cannot load texture for empty piece"),
         };
 
-        let img = image::open(format!("src/assets/{}{}_png_128px.png", prefix, name))
-            .expect("Failed to load piece texture")
+        // Get embedded bytes from assets module
+        let bytes = assets::get_asset_bytes(&piece);
+        let img = image::load_from_memory(bytes)
+            .expect("Failed to load piece texture from embedded bytes")
             .to_rgba8();
 
         let dimensions = img.dimensions();
@@ -532,8 +542,10 @@ impl WgpuRenderer {
 
     fn load_dot_texture(&mut self) {
         if self.dot_texture.is_none() {
-            let img = image::open("src/assets/circle.png")
-                .expect("Failed to load circle texture")
+            // Get embedded bytes from assets module
+            let bytes = assets::get_circle_asset_bytes();
+            let img = image::load_from_memory(bytes)
+                .expect("Failed to load circle texture from embedded bytes")
                 .to_rgba8();
 
             let dimensions = img.dimensions();
@@ -806,9 +818,16 @@ impl Renderer for WgpuRenderer {
     }
 
     fn coord_to_tile(&self, coords: PhysicalPosition<f64>, pov: Color) -> Option<u8> {
+        // Get scale factor to convert physical pixels to logical pixels
+        let scale_factor = self.window.scale_factor();
+
+        // Adjust coordinates for scale factor
+        let adjusted_x = coords.x / scale_factor;
+        let adjusted_y = coords.y / scale_factor;
+
         let (x, y) = (
-            (coords.x / self.window_size.0 as f64) * 2.0,
-            (coords.y / self.window_size.1 as f64) * 2.0,
+            (adjusted_x / self.window_size.0 as f64) * 2.0,
+            (adjusted_y / self.window_size.1 as f64) * 2.0,
         );
 
         let tile_w = self.board_dimensions.0 / 8.0;
