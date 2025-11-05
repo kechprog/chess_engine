@@ -97,11 +97,7 @@ fn test_must_move_out_of_check() {
 
     // All legal moves should get the king out of check
     for m in moves.iter() {
-        let mut temp_pos = Position {
-            position: pos.position,
-            prev_moves: pos.prev_moves.clone(),
-            castling_cond: pos.castling_cond,
-        };
+        let mut temp_pos = pos.clone();
         temp_pos.mk_move(*m);
         assert!(!temp_pos.is_in_check(Color::White), "Move should resolve check");
     }
@@ -126,11 +122,7 @@ fn test_pinned_piece_cannot_move() {
     // Most importantly, it cannot move off the e-file
     for m in moves.iter() {
         // Any legal move for the bishop should not expose the king to check
-        let mut temp_pos = Position {
-            position: pos.position,
-            prev_moves: pos.prev_moves.clone(),
-            castling_cond: pos.castling_cond,
-        };
+        let mut temp_pos = pos.clone();
         temp_pos.mk_move(*m);
         assert!(!temp_pos.is_in_check(Color::White), "Pinned piece moves must not expose king");
     }
