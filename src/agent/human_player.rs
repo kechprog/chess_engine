@@ -322,6 +322,10 @@ mod tests {
             false
         }
         fn draw_game_end(&mut self, _position: &Position, _selected_tile: Option<u8>, _pov: Color, _result: crate::agent::player::GameResult) {}
+        fn draw_promotion_selection(&mut self, _position: &Position, _selected_tile: Option<u8>, _pov: Color, _promoting_color: Color) {}
+        fn get_promotion_piece_at_coords(&self, _coords: PhysicalPosition<f64>) -> Option<crate::game_repr::Type> {
+            None
+        }
     }
 
     #[test]
@@ -334,17 +338,17 @@ mod tests {
     }
 
     #[test]
-    fn test_get_move_sets_pov() {
+    fn test_get_move_sets_current_color() {
         let board = Arc::new(RefCell::new(Board::new(Box::new(MockRenderer))));
         let mut player = HumanPlayer::new(board.clone(), "Test".to_string());
 
-        // Get move for White
+        // Get move for White - should store the color
         player.get_move(Color::White);
-        assert_eq!(board.borrow().pov(), Color::White);
+        assert_eq!(player.current_color, Some(Color::White));
 
-        // Get move for Black
+        // Get move for Black - should update the color
         player.get_move(Color::Black);
-        assert_eq!(board.borrow().pov(), Color::Black);
+        assert_eq!(player.current_color, Some(Color::Black));
     }
 
     #[test]

@@ -619,6 +619,14 @@ mod tests {
         fn draw_game_end(&mut self, _position: &Position, _selected_tile: Option<u8>, _pov: Color, _result: GameResult) {
             // No-op for tests
         }
+
+        fn draw_promotion_selection(&mut self, _position: &Position, _selected_tile: Option<u8>, _pov: Color, _promoting_color: Color) {
+            // No-op for tests
+        }
+
+        fn get_promotion_piece_at_coords(&self, _coords: PhysicalPosition<f64>) -> Option<Type> {
+            None
+        }
     }
 
     #[test]
