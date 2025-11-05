@@ -1,4 +1,4 @@
-use crate::game_repr::{Position, Color, Type, Piece, Move, MoveType};
+use crate::game_repr::{Color, Type, Piece};
 use super::{empty_board, has_move, place_piece};
 
 // ==================== OTHER PIECE MOVEMENT TESTS ====================

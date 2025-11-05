@@ -71,7 +71,6 @@ use crate::agent::player::Player;
 use std::cell::RefCell;
 use std::sync::Arc;
 use winit::event::{ElementState, MouseButton, WindowEvent};
-use winit::dpi::PhysicalPosition;
 
 /// Human player that makes moves via GUI interaction.
 ///
@@ -306,7 +305,8 @@ impl Player for HumanPlayer {
 mod tests {
     use super::*;
     use crate::renderer::Renderer;
-    use crate::game_repr::{Position, Type};
+    use crate::game_repr::Position;
+    use winit::dpi::PhysicalPosition;
 
     // Mock renderer for testing
     struct MockRenderer;
@@ -373,7 +373,7 @@ mod tests {
     #[test]
     fn test_handle_cursor_moved() {
         let board = Arc::new(RefCell::new(Board::new(Box::new(MockRenderer))));
-        let mut player = HumanPlayer::new(board.clone(), "Test".to_string());
+        let _player = HumanPlayer::new(board.clone(), "Test".to_string());
 
         let pos = PhysicalPosition::new(100.0, 150.0);
 

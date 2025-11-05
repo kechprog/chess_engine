@@ -14,17 +14,29 @@ pub struct Bitboards {
 }
 
 // Indexing constants for pieces array
+#[allow(dead_code)]
 const WHITE_PAWNS: usize = 0;
+#[allow(dead_code)]
 const WHITE_KNIGHTS: usize = 1;
+#[allow(dead_code)]
 const WHITE_BISHOPS: usize = 2;
+#[allow(dead_code)]
 const WHITE_ROOKS: usize = 3;
+#[allow(dead_code)]
 const WHITE_QUEENS: usize = 4;
+#[allow(dead_code)]
 const WHITE_KINGS: usize = 5;
+#[allow(dead_code)]
 const BLACK_PAWNS: usize = 6;
+#[allow(dead_code)]
 const BLACK_KNIGHTS: usize = 7;
+#[allow(dead_code)]
 const BLACK_BISHOPS: usize = 8;
+#[allow(dead_code)]
 const BLACK_ROOKS: usize = 9;
+#[allow(dead_code)]
 const BLACK_QUEENS: usize = 10;
+#[allow(dead_code)]
 const BLACK_KINGS: usize = 11;
 
 impl Bitboards {

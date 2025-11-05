@@ -162,6 +162,7 @@ pub struct WgpuRenderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
+    #[allow(dead_code)] // Used only in WASM builds for scale_factor()
     window: Arc<Window>,
 
     tile_pipeline: wgpu::RenderPipeline,
@@ -180,7 +181,7 @@ pub struct WgpuRenderer {
     // Text rendering components
     font_system: FontSystem,
     swash_cache: SwashCache,
-    cache: Cache,
+    _cache: Cache,
     text_atlas: TextAtlas,
     text_renderer: TextRenderer,
     viewport: Viewport,
@@ -468,7 +469,7 @@ impl WgpuRenderer {
             window_size: (window_size.width, window_size.height),
             font_system,
             swash_cache,
-            cache,
+            _cache: cache,
             text_atlas,
             text_renderer,
             viewport,

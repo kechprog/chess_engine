@@ -73,10 +73,10 @@ impl Move {
     }
 
 
-    fn from_u8(&self) -> u8 {
+    fn _from_u8(&self) -> u8 {
         todo!()
     }
-    fn to_u8(&self) -> u8 {
+    fn _to_u8(&self) -> u8 {
         todo!()
     }
 }
