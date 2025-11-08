@@ -28,9 +28,12 @@ use std::cell::RefCell;
 use std::sync::Arc;
 use std::f32;
 use rand::Rng;
+use rayon::prelude::*;
+use parking_lot::Mutex;
+use std::collections::HashMap;
 
 /// Configuration for the MCTS algorithm
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct MCTSConfig {
     /// Maximum depth for simulation (after which evaluation is used)
     pub max_depth: u32,
@@ -84,7 +87,7 @@ impl MCTSPlayer {
         Self { board, config, name }
     }
 
-    /// Run MCTS to find the best move
+    /// Run MCTS to find the best move (parallel version)
     fn search(&self, position: &Position, color: Color) -> Option<Move> {
         let legal_moves = position.all_legal_moves();
 
@@ -96,17 +99,53 @@ impl MCTSPlayer {
             return Some(legal_moves[0]);
         }
 
-        // Create root node
-        let mut root = MCTSNode::new(None, color);
+        // Use root parallelization: run multiple independent MCTS searches
+        // and combine their results
+        let num_threads = rayon::current_num_threads();
+        let iterations_per_thread = self.config.iterations / num_threads as u32;
+        let extra_iterations = self.config.iterations % num_threads as u32;
 
-        // Run MCTS iterations
-        for _ in 0..self.config.iterations {
-            let mut pos = position.clone();
-            root.iterate(&mut pos, &self.config, 0);
-        }
+        // Clone config and position for thread-safe access
+        let config = self.config.clone();
+        let position = position.clone();
 
-        // Select the move with the highest visit count (most explored)
-        root.best_move()
+        // Shared storage for aggregating results from all threads
+        let move_stats: Arc<Mutex<HashMap<Move, (u32, f32)>>> = Arc::new(Mutex::new(HashMap::new()));
+
+        // Run parallel MCTS searches
+        (0..num_threads).into_par_iter().for_each(|thread_id| {
+            // Calculate iterations for this thread
+            let iterations = if thread_id == 0 {
+                iterations_per_thread + extra_iterations
+            } else {
+                iterations_per_thread
+            };
+
+            // Create a root node for this thread
+            let mut root = MCTSNode::new(None, color);
+
+            // Run MCTS iterations for this thread
+            for _ in 0..iterations {
+                let mut pos = position.clone();
+                root.iterate(&mut pos, &config, 0);
+            }
+
+            // Collect statistics from this thread's root node
+            let mut stats = move_stats.lock();
+            for child in &root.children {
+                if let Some(mv) = child.mv {
+                    let entry = stats.entry(mv).or_insert((0, 0.0));
+                    entry.0 += child.visits;
+                    entry.1 += child.score;
+                }
+            }
+        });
+
+        // Select the move with the highest total visit count
+        let stats = move_stats.lock();
+        stats.iter()
+            .max_by_key(|(_, (visits, _))| visits)
+            .map(|(mv, _)| *mv)
     }
 }
 
