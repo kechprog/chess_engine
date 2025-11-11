@@ -59,7 +59,12 @@ impl Position {
             }
         }
 
-        // Parse castling rights (if present)
+        // Parse side to move (second field in FEN)
+        // "w" = White to move, "b" = Black to move
+        let side_to_move = parts.get(1).unwrap_or(&"w");
+        let is_white_to_move = *side_to_move == "w";
+
+        // Parse castling rights (third field in FEN)
         // castling_cond: [white_kingside_rook, white_queenside_rook, white_king, black_kingside_rook, black_queenside_rook, black_king]
         let mut castling_cond = [false; 6];
         if let Some(castling_str) = parts.get(2) {
@@ -93,10 +98,21 @@ impl Position {
 
         let bitboards = Bitboards::from_array(board);
 
+        // Initialize prev_moves to reflect whose turn it is
+        // The Position struct uses prev_moves.len() % 2 to determine side to move
+        // - even length (0, 2, 4, ...) = White to move
+        // - odd length (1, 3, 5, ...) = Black to move
+        let mut prev_moves = Vec::new();
+        if !is_white_to_move {
+            // Black to move means we need odd length prev_moves
+            // Add a dummy move (this is a sentinel value that won't be used)
+            prev_moves.push(Move::new(0, 0, MoveType::Normal));
+        }
+
         Self {
             bitboards,
             position: board,
-            prev_moves: Vec::new(),
+            prev_moves,
             castling_cond,
         }
     }

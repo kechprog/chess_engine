@@ -24,6 +24,7 @@
 
 use crate::agent::human_player::HumanPlayer;
 use crate::agent::player::{GameResult, Player};
+use crate::agent::AIPlayer;
 use crate::board::Board;
 use crate::game_repr::{Color, Move};
 use crate::renderer::wgpu_renderer::WgpuRenderer;
@@ -178,9 +179,6 @@ impl Orchestrator {
                 if self.game_mode == GameMode::Menu {
                     // Draw menu screen
                     self.board.borrow_mut().draw_menu(false);
-                } else if self.game_mode == GameMode::PvAI && !self.game_active {
-                    // Show "Coming Soon!" for PvAI
-                    self.board.borrow_mut().draw_menu(true);
                 } else if let Some(result) = self.game_result {
                     // Game has ended - draw board with game end overlay
                     self.board.borrow_mut().draw_game_end(result);
@@ -216,14 +214,11 @@ impl Orchestrator {
                         self.set_game_mode(GameMode::PvP);
                         self.start_game();
                     } else if board.is_coord_in_button(mouse_pos, 1) {
-                        // PvAI button clicked - show "Coming Soon!"
+                        // PvAI button clicked - start game with AI
                         drop(board);
                         self.set_game_mode(GameMode::PvAI);
-                        self.window.request_redraw();
+                        self.start_game();
                     }
-                } else if self.game_mode == GameMode::PvAI && !self.game_active && state == ElementState::Pressed {
-                    // Click anywhere on "Coming Soon!" screen to return to menu
-                    self.return_to_menu();
                 } else if self.game_result.is_some() && state == ElementState::Pressed {
                     // Click anywhere on game end overlay to return to menu
                     self.return_to_menu();
@@ -441,7 +436,11 @@ impl Orchestrator {
             }
 
             GameMode::PvAI => {
-                // TODO: Future implementation
+                // Human plays White, AI plays Black
+                let player1 = Box::new(HumanPlayer::new(self.board.clone(), "White".to_string()));
+                // AI with 10000 iterations (very strong, ~10 seconds per move)
+                let player2 = Box::new(AIPlayer::new(self.board.clone(), 5000, "AI (Strong)".to_string()));
+                self.players = Some((player1, player2));
             }
 
             GameMode::AIvAI => {
