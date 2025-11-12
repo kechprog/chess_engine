@@ -36,6 +36,7 @@ console_error_panic_hook = "0.1"
 console_log = "1.0"
 web-time = "1.1"
 wgpu = { version = "23.0", features = ["webgl"] }
+getrandom = { version = "0.2", features = ["js"] }
 
 [dev-dependencies]
 chess = "3.2"

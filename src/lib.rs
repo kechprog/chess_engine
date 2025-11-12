@@ -7,7 +7,7 @@ pub mod renderer;
 
 #[cfg(target_arch = "wasm32")]
 mod wasm {
-    use crate::orchestrator::{GameMode, Orchestrator};
+    use crate::orchestrator::Orchestrator;
     use crate::renderer::wgpu_renderer::WgpuRenderer;
     use std::sync::Arc;
     use wasm_bindgen::prelude::*;
