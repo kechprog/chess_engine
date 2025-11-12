@@ -78,4 +78,19 @@ pub trait Renderer {
     /// * `Some(Type)` - The piece type if clicked on a piece (Queen, Rook, Bishop, or Knight)
     /// * `None` - If not over any piece option
     fn get_promotion_piece_at_coords(&self, coords: PhysicalPosition<f64>) -> Option<crate::game_repr::Type>;
+
+    /// Draw the side selection screen for PvAI mode
+    ///
+    /// Shows options to play as White or Black
+    fn draw_side_selection(&mut self);
+
+    /// Check if screen coordinates are over a side selection button
+    ///
+    /// # Arguments
+    /// * `coords` - Physical position in pixels
+    /// * `button_index` - Which button to check (0 = White, 1 = Black)
+    ///
+    /// # Returns
+    /// * `true` if the coordinate is within the button bounds
+    fn is_coord_in_side_button(&self, coords: PhysicalPosition<f64>, button_index: usize) -> bool;
 }

@@ -247,4 +247,41 @@ pub trait Player {
     fn name(&self) -> &str {
         "Player"
     }
+
+    /// Get automatic promotion piece choice for this player.
+    ///
+    /// This method is called when a pawn reaches the back rank and needs to be promoted.
+    /// Different player types handle this differently:
+    /// - **AI players**: Return Some(PieceType) to automatically select (e.g., Queen)
+    /// - **Human players**: Return None to show UI overlay for manual selection
+    ///
+    /// # Default Implementation
+    ///
+    /// Returns `None`, which means show the promotion selection UI.
+    /// Override this method to provide automatic promotion selection.
+    ///
+    /// # Returns
+    ///
+    /// - `Some(Type)`: Automatically select this piece type
+    /// - `None`: Show UI for user to select
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use chess_engine::agent::player::Player;
+    /// use chess_engine::game_repr::Type;
+    ///
+    /// // AI player that always promotes to Queen
+    /// struct SimpleAI;
+    /// impl Player for SimpleAI {
+    ///     fn get_promotion_choice(&self) -> Option<Type> {
+    ///         Some(Type::Queen)  // Always choose Queen
+    ///     }
+    ///     // ... other trait methods
+    /// #   fn get_move(&mut self, _: chess_engine::game_repr::Color) -> Option<chess_engine::game_repr::Move> { None }
+    /// }
+    /// ```
+    fn get_promotion_choice(&self) -> Option<crate::game_repr::Type> {
+        None  // Default: show UI for selection
+    }
 }

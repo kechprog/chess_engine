@@ -1475,4 +1475,236 @@ impl Renderer for WgpuRenderer {
 
         None
     }
+
+    fn draw_side_selection(&mut self) {
+        let output = self.surface.get_current_texture().unwrap();
+        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Side Selection Render Encoder"),
+        });
+
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Side Selection Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.15,
+                            g: 0.15,
+                            b: 0.18,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
+
+            render_pass.set_pipeline(&self.tile_pipeline);
+            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+
+            // Draw "Play as White" button (top) - light colored
+            let white_vertices = [
+                TileVertex { position: [-0.5, 0.3], color: [0.9, 0.9, 0.9, 1.0] },
+                TileVertex { position: [0.5, 0.3], color: [0.9, 0.9, 0.9, 1.0] },
+                TileVertex { position: [-0.5, 0.1], color: [0.9, 0.9, 0.9, 1.0] },
+                TileVertex { position: [0.5, 0.1], color: [0.9, 0.9, 0.9, 1.0] },
+            ];
+
+            let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("White Button Vertex Buffer"),
+                contents: bytemuck::cast_slice(&white_vertices),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
+
+            render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+            render_pass.draw_indexed(0..6, 0, 0..1);
+
+            // Draw "Play as Black" button (bottom) - dark colored
+            let black_vertices = [
+                TileVertex { position: [-0.5, -0.1], color: [0.2, 0.2, 0.2, 1.0] },
+                TileVertex { position: [0.5, -0.1], color: [0.2, 0.2, 0.2, 1.0] },
+                TileVertex { position: [-0.5, -0.3], color: [0.2, 0.2, 0.2, 1.0] },
+                TileVertex { position: [0.5, -0.3], color: [0.2, 0.2, 0.2, 1.0] },
+            ];
+
+            let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Black Button Vertex Buffer"),
+                contents: bytemuck::cast_slice(&black_vertices),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
+
+            render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+            render_pass.draw_indexed(0..6, 0, 0..1);
+        }
+
+        // Prepare text rendering
+        let viewport_width = self.window_size.0 as f32;
+        let viewport_height = self.window_size.1 as f32;
+
+        // Update viewport with current window size
+        self.viewport.update(&self.queue, glyphon::Resolution {
+            width: self.window_size.0,
+            height: self.window_size.1,
+        });
+
+        // Create text buffers for the buttons
+        let mut title_buffer = Buffer::new(&mut self.font_system, Metrics::new(40.0, 50.0));
+        title_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+        title_buffer.set_text(&mut self.font_system, "Choose Your Side", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+
+        let mut white_buffer = Buffer::new(&mut self.font_system, Metrics::new(32.0, 40.0));
+        white_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+        white_buffer.set_text(&mut self.font_system, "Play as White", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+
+        let mut black_buffer = Buffer::new(&mut self.font_system, Metrics::new(32.0, 40.0));
+        black_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+        black_buffer.set_text(&mut self.font_system, "Play as Black", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+
+        // Calculate text positions
+        // Title at top
+        let title_layout = title_buffer.layout_runs();
+        let mut title_width: f32 = 0.0;
+        for run in title_layout {
+            title_width = title_width.max(run.line_w);
+        }
+        let title_x = (viewport_width / 2.0 - title_width / 2.0).max(0.0);
+        let title_y = 50.0;
+
+        // White button text (centered on light button at y=0.2 in NDC)
+        let white_ndc_center_y = (0.3 + 0.1) / 2.0; // 0.2
+        let white_center_y = (1.0 - white_ndc_center_y) / 2.0 * viewport_height;
+
+        let white_layout = white_buffer.layout_runs();
+        let mut white_width: f32 = 0.0;
+        for run in white_layout {
+            white_width = white_width.max(run.line_w);
+        }
+        let white_text_x = (viewport_width / 2.0 - white_width / 2.0).max(0.0);
+        let white_text_y = (white_center_y - 16.0).max(0.0);
+
+        // Black button text (centered on dark button at y=-0.2 in NDC)
+        let black_ndc_center_y = (-0.1 + -0.3) / 2.0; // -0.2
+        let black_center_y = (1.0 - black_ndc_center_y) / 2.0 * viewport_height;
+
+        let black_layout = black_buffer.layout_runs();
+        let mut black_width: f32 = 0.0;
+        for run in black_layout {
+            black_width = black_width.max(run.line_w);
+        }
+        let black_text_x = (viewport_width / 2.0 - black_width / 2.0).max(0.0);
+        let black_text_y = (black_center_y - 16.0).max(0.0);
+
+        let text_areas = [
+            TextArea {
+                buffer: &title_buffer,
+                left: title_x,
+                top: title_y,
+                scale: 1.0,
+                bounds: glyphon::TextBounds {
+                    left: 0,
+                    top: 0,
+                    right: viewport_width as i32,
+                    bottom: viewport_height as i32,
+                },
+                default_color: glyphon::Color::rgb(255, 255, 255),
+                custom_glyphs: &[],
+            },
+            TextArea {
+                buffer: &white_buffer,
+                left: white_text_x,
+                top: white_text_y,
+                scale: 1.0,
+                bounds: glyphon::TextBounds {
+                    left: 0,
+                    top: 0,
+                    right: viewport_width as i32,
+                    bottom: viewport_height as i32,
+                },
+                default_color: glyphon::Color::rgb(0, 0, 0),
+                custom_glyphs: &[],
+            },
+            TextArea {
+                buffer: &black_buffer,
+                left: black_text_x,
+                top: black_text_y,
+                scale: 1.0,
+                bounds: glyphon::TextBounds {
+                    left: 0,
+                    top: 0,
+                    right: viewport_width as i32,
+                    bottom: viewport_height as i32,
+                },
+                default_color: glyphon::Color::rgb(255, 255, 255),
+                custom_glyphs: &[],
+            },
+        ];
+
+        self.text_renderer.prepare(
+            &self.device,
+            &self.queue,
+            &mut self.font_system,
+            &mut self.text_atlas,
+            &self.viewport,
+            text_areas,
+            &mut self.swash_cache,
+        ).unwrap();
+
+        // Render text
+        {
+            let mut text_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Text Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
+
+            self.text_renderer.render(&self.text_atlas, &self.viewport, &mut text_pass).unwrap();
+        }
+
+        self.queue.submit(std::iter::once(encoder.finish()));
+        output.present();
+    }
+
+    // TODO: Add is_coord_in_side_button to Renderer trait
+    #[allow(dead_code)]
+    fn is_coord_in_side_button(&self, coords: PhysicalPosition<f64>, button_index: usize) -> bool {
+        // Convert physical coordinates to normalized device coordinates (-1 to 1)
+        #[cfg(target_arch = "wasm32")]
+        let (adjusted_x, adjusted_y) = {
+            let scale_factor = self.window.scale_factor();
+            (coords.x / scale_factor, coords.y / scale_factor)
+        };
+
+        #[cfg(not(target_arch = "wasm32"))]
+        let (adjusted_x, adjusted_y) = (coords.x, coords.y);
+
+        let norm_x = (adjusted_x / self.window_size.0 as f64) * 2.0 - 1.0;
+        let norm_y = (adjusted_y / self.window_size.1 as f64) * 2.0 - 1.0;
+
+        match button_index {
+            0 => {
+                // Play as White button (top): x in [-0.5, 0.5], y in [-0.3, -0.1] (in NDC, -Y is down)
+                norm_x >= -0.5 && norm_x <= 0.5 && norm_y >= -0.3 && norm_y <= -0.1
+            }
+            1 => {
+                // Play as Black button (bottom): x in [-0.5, 0.5], y in [0.1, 0.3]
+                norm_x >= -0.5 && norm_x <= 0.5 && norm_y >= 0.1 && norm_y <= 0.3
+            }
+            _ => false,
+        }
+    }
 }

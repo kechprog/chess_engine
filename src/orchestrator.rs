@@ -55,6 +55,18 @@ pub enum GameMode {
     Online,
 }
 
+/// Menu state for tracking sub-menus and selections.
+///
+/// Used to navigate between main menu and side selection for PvAI mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MenuState {
+    /// Main menu showing game mode options
+    ModeSelection,
+
+    /// Side selection menu for PvAI (choose White or Black)
+    SideSelection,
+}
+
 /// Root component managing application lifecycle and game coordination.
 ///
 /// The Orchestrator is responsible for:
@@ -115,6 +127,14 @@ pub struct Orchestrator {
     /// Pending promotion state
     /// Contains (from_square, to_square) when waiting for user to select promotion piece
     pending_promotion: Option<(u8, u8)>,
+
+    /// Current menu state (ModeSelection or SideSelection)
+    /// Only meaningful when game_mode is Menu
+    menu_state: MenuState,
+
+    /// User's chosen color for PvAI mode
+    /// Only meaningful when in SideSelection menu state or starting PvAI game
+    user_color_choice: Option<Color>,
 }
 
 impl Orchestrator {
@@ -154,6 +174,8 @@ impl Orchestrator {
             starting_fen: String::new(),
             game_result: None,
             pending_promotion: None,
+            menu_state: MenuState::ModeSelection,
+            user_color_choice: None,
         }
     }
 
@@ -177,8 +199,15 @@ impl Orchestrator {
         match event {
             WindowEvent::RedrawRequested => {
                 if self.game_mode == GameMode::Menu {
-                    // Draw menu screen
-                    self.board.borrow_mut().draw_menu(false);
+                    // Draw appropriate menu based on menu state
+                    match self.menu_state {
+                        MenuState::ModeSelection => {
+                            self.board.borrow_mut().draw_menu(false);
+                        }
+                        MenuState::SideSelection => {
+                            self.board.borrow_mut().draw_side_selection();
+                        }
+                    }
                 } else if let Some(result) = self.game_result {
                     // Game has ended - draw board with game end overlay
                     self.board.borrow_mut().draw_game_end(result);
@@ -205,19 +234,41 @@ impl Orchestrator {
 
                 // Handle menu button clicks
                 if self.game_mode == GameMode::Menu && state == ElementState::Pressed && button == MouseButton::Left {
-                    let board = self.board.borrow();
-                    let mouse_pos = board.mouse_pos();
+                    match self.menu_state {
+                        MenuState::ModeSelection => {
+                            let board = self.board.borrow();
+                            let mouse_pos = board.mouse_pos();
 
-                    if board.is_coord_in_button(mouse_pos, 0) {
-                        // PvP button clicked
-                        drop(board);
-                        self.set_game_mode(GameMode::PvP);
-                        self.start_game();
-                    } else if board.is_coord_in_button(mouse_pos, 1) {
-                        // PvAI button clicked - start game with AI
-                        drop(board);
-                        self.set_game_mode(GameMode::PvAI);
-                        self.start_game();
+                            if board.is_coord_in_button(mouse_pos, 0) {
+                                // PvP button clicked
+                                drop(board);
+                                self.set_game_mode(GameMode::PvP);
+                                self.start_game();
+                            } else if board.is_coord_in_button(mouse_pos, 1) {
+                                // PvAI button clicked - show side selection menu
+                                drop(board);
+                                self.menu_state = MenuState::SideSelection;
+                                self.window.request_redraw();
+                            }
+                        }
+                        MenuState::SideSelection => {
+                            let board = self.board.borrow();
+                            let mouse_pos = board.mouse_pos();
+
+                            if board.is_coord_in_side_button(mouse_pos, 0) {
+                                // Play as White button clicked
+                                drop(board);
+                                self.user_color_choice = Some(Color::White);
+                                self.set_game_mode(GameMode::PvAI);
+                                self.start_game();
+                            } else if board.is_coord_in_side_button(mouse_pos, 1) {
+                                // Play as Black button clicked
+                                drop(board);
+                                self.user_color_choice = Some(Color::Black);
+                                self.set_game_mode(GameMode::PvAI);
+                                self.start_game();
+                            }
+                        }
                     }
                 } else if self.game_result.is_some() && state == ElementState::Pressed {
                     // Click anywhere on game end overlay to return to menu
@@ -316,10 +367,14 @@ impl Orchestrator {
 
         // Try to get a move from the current player
         if let Some(mv) = current_player.get_move(self.current_turn) {
-            // Check if this is a promotion move
-            if self.check_pending_promotion(mv) {
-                // Promotion selection UI will be shown, don't process the move yet
-                return;
+            // Check if this is a promotion move that needs user input
+            // Only show promotion UI for players that don't have automatic promotion choice
+            if mv.move_type().is_promotion() && current_player.get_promotion_choice().is_none() {
+                // Promotion selection UI will be shown for human players
+                if self.check_pending_promotion(mv) {
+                    // Promotion selection UI will be shown, don't process the move yet
+                    return;
+                }
             }
 
             self.process_move(mv);
@@ -436,11 +491,25 @@ impl Orchestrator {
             }
 
             GameMode::PvAI => {
-                // Human plays White, AI plays Black
-                let player1 = Box::new(HumanPlayer::new(self.board.clone(), "White".to_string()));
-                // AI with 10000 iterations (very strong, ~10 seconds per move)
-                let player2 = Box::new(AIPlayer::new(self.board.clone(), 5000, "AI (Strong)".to_string()));
-                self.players = Some((player1, player2));
+                // Create players based on user's color choice
+                // Default to user playing White if no choice was made (shouldn't happen)
+                let user_color = self.user_color_choice.unwrap_or(Color::White);
+
+                match user_color {
+                    Color::White => {
+                        // Human plays White, AI plays Black
+                        let player1 = Box::new(HumanPlayer::new(self.board.clone(), "You".to_string()));
+                        // AI with 10000 iterations (very strong, ~10 seconds per move)
+                        let player2 = Box::new(AIPlayer::new(self.board.clone(), 10000, "AI".to_string()));
+                        self.players = Some((player1, player2));
+                    }
+                    Color::Black => {
+                        // AI plays White, Human plays Black
+                        let player1 = Box::new(AIPlayer::new(self.board.clone(), 10000, "AI".to_string()));
+                        let player2 = Box::new(HumanPlayer::new(self.board.clone(), "You".to_string()));
+                        self.players = Some((player1, player2));
+                    }
+                }
             }
 
             GameMode::AIvAI => {
@@ -460,7 +529,19 @@ impl Orchestrator {
         {
             let mut board = self.board.borrow_mut();
             board.reset_position(&self.starting_fen);
-            board.set_pov(Color::White);
+
+            // Set POV based on game mode
+            match self.game_mode {
+                GameMode::PvAI => {
+                    // Set POV to user's chosen color (or White as default)
+                    let user_color = self.user_color_choice.unwrap_or(Color::White);
+                    board.set_pov(user_color);
+                }
+                _ => {
+                    // For other modes, default to White's perspective
+                    board.set_pov(Color::White);
+                }
+            }
         }
 
         // Request initial redraw
@@ -561,7 +642,11 @@ impl Orchestrator {
             self.current_turn = self.current_turn.opposite();
 
             // Update POV to new player's perspective
-            self.board.borrow_mut().set_pov(self.current_turn);
+            // In PvP mode, rotate board to show from current player's perspective
+            // In PvAI mode, keep board fixed from human player's perspective (always White)
+            if self.game_mode == GameMode::PvP {
+                self.board.borrow_mut().set_pov(self.current_turn);
+            }
 
             // Request redraw to show new position
             self.window.request_redraw();
@@ -712,6 +797,8 @@ impl Orchestrator {
         self.players = None;
         self.game_result = None;
         self.pending_promotion = None;
+        self.menu_state = MenuState::ModeSelection;
+        self.user_color_choice = None;
 
         self.board.borrow_mut().set_selected_tile(None);
 

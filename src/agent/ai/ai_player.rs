@@ -120,6 +120,19 @@ impl Player for AIPlayer {
     fn name(&self) -> &str {
         &self.name
     }
+
+    /// AI automatically chooses promotion piece
+    ///
+    /// The MCTS search already evaluates different promotion pieces (Queen, Rook, Bishop, Knight)
+    /// and returns the best one in the move itself. We return Some(Type::Queen) as a signal to
+    /// the orchestrator that we don't need the promotion UI shown - the move already contains
+    /// the chosen promotion piece type.
+    fn get_promotion_choice(&self) -> Option<crate::game_repr::Type> {
+        use crate::game_repr::Type;
+        // Return Some to signal: "don't show UI, I already chose the piece"
+        // The actual piece type is encoded in the move returned by get_move()
+        Some(Type::Queen)
+    }
 }
 
 #[cfg(test)]

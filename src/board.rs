@@ -584,6 +584,27 @@ impl Board {
     pub fn get_promotion_piece_at_coords(&self, coords: PhysicalPosition<f64>) -> Option<crate::game_repr::Type> {
         self.renderer.get_promotion_piece_at_coords(coords)
     }
+
+    /// Draw the side selection screen for PvAI mode.
+    ///
+    /// Shows buttons for the player to choose whether to play as White or Black.
+    pub fn draw_side_selection(&mut self) {
+        self.renderer.draw_side_selection();
+    }
+
+    /// Check if given coordinates are inside a side selection button.
+    ///
+    /// # Arguments
+    ///
+    /// * `coords` - Physical position in pixels
+    /// * `button_index` - Which button to check (0 = Play as White, 1 = Play as Black)
+    ///
+    /// # Returns
+    ///
+    /// `true` if the coordinates are within the button's bounds
+    pub fn is_coord_in_side_button(&self, coords: PhysicalPosition<f64>, button_index: usize) -> bool {
+        self.renderer.is_coord_in_side_button(coords, button_index)
+    }
 }
 
 #[cfg(test)]
@@ -626,6 +647,14 @@ mod tests {
 
         fn get_promotion_piece_at_coords(&self, _coords: PhysicalPosition<f64>) -> Option<Type> {
             None
+        }
+
+        fn draw_side_selection(&mut self) {
+            // No-op for tests
+        }
+
+        fn is_coord_in_side_button(&self, _coords: PhysicalPosition<f64>, _button_index: usize) -> bool {
+            false
         }
     }
 

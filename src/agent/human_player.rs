@@ -299,6 +299,14 @@ impl Player for HumanPlayer {
     fn name(&self) -> &str {
         &self.name
     }
+
+    /// Get automatic promotion choice (None = show UI for human selection).
+    ///
+    /// Human players need to select their promotion piece via the UI overlay,
+    /// so this always returns None.
+    fn get_promotion_choice(&self) -> Option<crate::game_repr::Type> {
+        None  // Show UI for human to select promotion piece
+    }
 }
 
 #[cfg(test)]
@@ -325,6 +333,10 @@ mod tests {
         fn draw_promotion_selection(&mut self, _position: &Position, _selected_tile: Option<u8>, _pov: Color, _promoting_color: Color) {}
         fn get_promotion_piece_at_coords(&self, _coords: PhysicalPosition<f64>) -> Option<crate::game_repr::Type> {
             None
+        }
+        fn draw_side_selection(&mut self) {}
+        fn is_coord_in_side_button(&self, _coords: PhysicalPosition<f64>, _button_index: usize) -> bool {
+            false
         }
     }
 
