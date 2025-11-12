@@ -620,39 +620,6 @@ pub fn quick_evaluate(pos: &Position, side_to_move: Color) -> i32 {
     }
 }
 
-/// Evaluate position considering opponent's best response (1-ply lookahead)
-/// This prevents tactical blunders by considering immediate opponent responses
-///
-/// Returns evaluation from our_color's perspective AFTER opponent's best response
-pub fn evaluate_with_opponent_response(pos: &Position, our_color: Color) -> i32 {
-    use super::move_ordering::generate_ordered_moves;
-
-    // Generate top opponent moves (limited for performance)
-    const TOP_OPPONENT_MOVES: usize = 10;
-    let opp_moves = generate_ordered_moves(pos, our_color.opposite(), TOP_OPPONENT_MOVES);
-
-    // If opponent has no moves, just return normal evaluation
-    if opp_moves.is_empty() {
-        return evaluate(pos, our_color);
-    }
-
-    // Try each opponent response and find the worst outcome for us (best for opponent)
-    let mut worst_eval = i32::MAX;
-
-    for &mov in &opp_moves {
-        let mut temp_pos = pos.clone();
-        temp_pos.make_move_undoable(mov);
-
-        // Evaluate from our perspective after opponent's move
-        let eval = evaluate(&temp_pos, our_color);
-
-        // Track worst case for us
-        worst_eval = worst_eval.min(eval);
-    }
-
-    worst_eval
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

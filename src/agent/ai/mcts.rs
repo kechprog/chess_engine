@@ -1,7 +1,7 @@
 // Monte Carlo Tree Search implementation with evaluation-guided playouts and progressive widening
 
 use crate::game_repr::{Position, Move, Color};
-use super::evaluation::{evaluate, quick_evaluate, evaluate_with_opponent_response};
+use super::evaluation::{evaluate, quick_evaluate};
 use super::move_ordering::{generate_ordered_moves, generate_all_ordered_moves};
 use std::f64;
 
@@ -73,6 +73,7 @@ impl MCTSNode {
     }
 
     /// Expand one more child node
+    /// Uses 2-ply evaluation: considers opponent's best response before evaluating
     fn expand_one_child(&mut self, pos: &Position, color: Color, parent_color: Color) {
         if self.expanded_children_count >= self.available_moves.len() {
             self.fully_expanded = true;
@@ -86,11 +87,52 @@ impl MCTSNode {
         let mut child_pos = pos.clone();
         child_pos.make_move_undoable(mov);
 
-        // IMPORTANT: Evaluate with 1-ply lookahead (considering opponent's best response)
-        // This prevents tactical blunders where we don't see immediate recaptures
-        let eval_score = evaluate_with_opponent_response(&child_pos, parent_color);
+        // Use 2-ply evaluation: consider opponent's best response
+        // After making our move, it's opponent's turn (color.opposite())
+        let eval_score = if color == parent_color {
+            // We just made our move, now it's opponent's turn
+            // Need to consider their best response (2-ply)
+            let opponent_moves = generate_ordered_moves(&child_pos, color.opposite(), 5);
 
-        // Create child node with the tactically-aware evaluation
+            if opponent_moves.is_empty() {
+                // No opponent moves (checkmate or stalemate)
+                quick_evaluate(&child_pos, parent_color)
+            } else {
+                // Try opponent's best moves and find worst case for us
+                let mut worst_case_eval = i32::MAX;
+                for &opp_mov in opponent_moves.iter().take(5) {
+                    let mut pos_after_opponent = child_pos.clone();
+                    pos_after_opponent.make_move_undoable(opp_mov);
+
+                    // Now it's our turn again - evaluate from our perspective
+                    let eval = quick_evaluate(&pos_after_opponent, parent_color);
+                    worst_case_eval = worst_case_eval.min(eval);
+                }
+                worst_case_eval
+            }
+        } else {
+            // It's opponent's turn to move, we need to evaluate from their perspective
+            // (this happens at odd depths in the tree)
+            let opponent_moves = generate_ordered_moves(&child_pos, color.opposite(), 5);
+
+            if opponent_moves.is_empty() {
+                // No opponent moves
+                quick_evaluate(&child_pos, parent_color)
+            } else {
+                // Try opponent's moves and find worst case from parent's perspective
+                let mut worst_case_eval = i32::MAX;
+                for &opp_mov in opponent_moves.iter().take(5) {
+                    let mut pos_after_opponent = child_pos.clone();
+                    pos_after_opponent.make_move_undoable(opp_mov);
+
+                    let eval = quick_evaluate(&pos_after_opponent, parent_color);
+                    worst_case_eval = worst_case_eval.min(eval);
+                }
+                worst_case_eval
+            }
+        };
+
+        // Create child node with evaluation-guided bias
         let child_node = MCTSNode::new_with_eval_score(Some(mov), &child_pos, color.opposite(), eval_score);
         self.children.push(child_node);
 
@@ -362,7 +404,8 @@ impl MCTSTree {
         normalized.tanh()
     }
 
-    /// Select a move during playout using evaluation guidance with 1-ply lookahead
+    /// Select a move during playout using evaluation guidance
+    /// Uses 2-ply evaluation: considers opponent's best response before evaluating
     fn select_playout_move(&self, pos: &Position, moves: &[Move], color: Color) -> Move {
         if moves.is_empty() {
             panic!("select_playout_move called with empty moves");
@@ -372,21 +415,43 @@ impl MCTSTree {
             return moves[0];
         }
 
-        // Calculate scores for each move considering opponent's best response
-        // Use greedy selection: always pick the best move to make playouts more reliable
+        // Evaluate each move considering opponent's best response (2-ply)
         let mut best_move = moves[0];
         let mut best_eval = i32::MIN;
 
         for &mov in moves {
-            let mut test_pos = pos.clone();
-            test_pos.make_move_undoable(mov);
+            let mut pos_after_our_move = pos.clone();
+            pos_after_our_move.make_move_undoable(mov);
 
-            // Evaluate with 1-ply lookahead (considering opponent's best response)
-            // This prevents playouts from making tactical blunders
-            let eval = evaluate_with_opponent_response(&test_pos, color);
+            // Now it's opponent's turn - we need to see their best response
+            // Generate a few opponent moves to check
+            let opponent_moves = generate_ordered_moves(&pos_after_our_move, color.opposite(), 5);
 
-            if eval > best_eval {
-                best_eval = eval;
+            if opponent_moves.is_empty() {
+                // No opponent moves (checkmate or stalemate)
+                // Evaluate the position directly
+                let eval = evaluate(&pos_after_our_move, color);
+                if eval > best_eval {
+                    best_eval = eval;
+                    best_move = mov;
+                }
+                continue;
+            }
+
+            // Try opponent's best moves and find worst case for us
+            let mut worst_case_eval = i32::MAX;
+            for &opp_mov in opponent_moves.iter().take(5) {
+                let mut pos_after_opponent = pos_after_our_move.clone();
+                pos_after_opponent.make_move_undoable(opp_mov);
+
+                // Now it's our turn again - evaluate from our perspective
+                let eval = quick_evaluate(&pos_after_opponent, color);
+                worst_case_eval = worst_case_eval.min(eval);
+            }
+
+            // This move's score is the worst case after opponent responds
+            if worst_case_eval > best_eval {
+                best_eval = worst_case_eval;
                 best_move = mov;
             }
         }
