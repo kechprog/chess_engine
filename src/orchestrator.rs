@@ -499,13 +499,13 @@ impl Orchestrator {
                     Color::White => {
                         // Human plays White, AI plays Black
                         let player1 = Box::new(HumanPlayer::new(self.board.clone(), "You".to_string()));
-                        // AI with 10000 iterations (very strong, ~10 seconds per move)
-                        let player2 = Box::new(AIPlayer::new(self.board.clone(), 10000, "AI".to_string()));
+                        // AI with 10000 iterations (very strong, ~10 seconds per move), auto-detect threads
+                        let player2 = Box::new(AIPlayer::new(self.board.clone(), 10000, "AI".to_string(), None));
                         self.players = Some((player1, player2));
                     }
                     Color::Black => {
                         // AI plays White, Human plays Black
-                        let player1 = Box::new(AIPlayer::new(self.board.clone(), 10000, "AI".to_string()));
+                        let player1 = Box::new(AIPlayer::new(self.board.clone(), 10000, "AI".to_string(), None));
                         let player2 = Box::new(HumanPlayer::new(self.board.clone(), "You".to_string()));
                         self.players = Some((player1, player2));
                     }
