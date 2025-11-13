@@ -1,9 +1,10 @@
+use smallvec::SmallVec;
 use crate::game_repr::{Color, Move, MoveType, Position, Type};
 use crate::game_repr::bitboards::{pop_lsb, tables::PAWN_ATTACKS};
 
 impl Position {
     /// Generate pawn moves into a provided buffer
-    pub fn pawn_moves_into(&self, idx: usize, moves: &mut Vec<Move>) {
+    pub fn pawn_moves_into(&self, idx: usize, moves: &mut SmallVec<[Move; 64]>) {
         let piece = self.position[idx];
         let start_len = moves.len();  // Track where we started adding moves
 
@@ -85,7 +86,7 @@ impl Position {
         // Handle promotions: replace moves that reach the back rank with 4 promotion variants
         // We need to check all moves we just added (from start_len to end)
         let end_len = moves.len();
-        let mut promotion_moves = Vec::new();
+        let mut promotion_moves: SmallVec<[Move; 16]> = SmallVec::new();
 
         for i in (start_len..end_len).rev() {
             let m = moves[i];
@@ -108,8 +109,8 @@ impl Position {
     }
 
     /// Generate pawn moves (backward-compatible wrapper)
-    pub fn pawn_moves(&self, idx: usize) -> Vec<Move> {
-        let mut moves = Vec::with_capacity(16);  // Max: 4 moves × 4 promotion types
+    pub fn pawn_moves(&self, idx: usize) -> SmallVec<[Move; 64]> {
+        let mut moves = SmallVec::with_capacity(16);  // Max: 4 moves × 4 promotion types
         self.pawn_moves_into(idx, &mut moves);
         moves
     }

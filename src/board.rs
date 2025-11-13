@@ -2,6 +2,7 @@ use crate::agent::player::GameResult;
 use crate::game_repr::{Color, Move, Piece, Position};
 use crate::renderer::Renderer;
 use winit::dpi::PhysicalPosition;
+use smallvec::SmallVec;
 
 /// Board component: Shared state object managing chess position, rendering, and UI interactions.
 ///
@@ -56,7 +57,7 @@ pub struct Board {
 
     /// Cached legal moves for the currently selected piece
     /// Updated automatically when selected_tile changes
-    legal_moves_cache: Vec<Move>,
+    legal_moves_cache: SmallVec<[Move; 64]>,
 
     /// Point of view - which color is shown at the bottom of the board
     pov: Color,
@@ -87,7 +88,7 @@ impl Board {
             position: Position::default(),
             renderer,
             selected_tile: None,
-            legal_moves_cache: Vec::new(),
+            legal_moves_cache: SmallVec::new(),
             pov: Color::White,
             mouse_pos: PhysicalPosition::new(0.0, 0.0),
         }
@@ -117,7 +118,7 @@ impl Board {
             position: Position::from_fen(fen),
             renderer,
             selected_tile: None,
-            legal_moves_cache: Vec::new(),
+            legal_moves_cache: SmallVec::new(),
             pov: Color::White,
             mouse_pos: PhysicalPosition::new(0.0, 0.0),
         }
@@ -174,8 +175,8 @@ impl Board {
     /// # Returns
     ///
     /// A vector of all legal moves for the given color.
-    pub fn legal_moves_for(&self, color: Color) -> Vec<Move> {
-        let mut all_moves = Vec::new();
+    pub fn legal_moves_for(&self, color: Color) -> SmallVec<[Move; 64]> {
+        let mut all_moves = SmallVec::new();
 
         for idx in 0..64 {
             let piece = self.position.position[idx];

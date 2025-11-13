@@ -1,3 +1,4 @@
+use smallvec::SmallVec;
 use crate::game_repr::{Move, MoveType};
 use crate::game_repr::bitboards::{pop_lsb, bitscan_forward, tables::*};
 
@@ -5,7 +6,7 @@ use super::super::position::Position;
 
 impl Position {
     /// Generate bishop moves into a provided buffer
-    pub fn bishop_moves_into(&self, idx: usize, include_friendly: bool, moves: &mut Vec<Move>) {
+    pub fn bishop_moves_into(&self, idx: usize, include_friendly: bool, moves: &mut SmallVec<[Move; 64]>) {
         let moving_piece = self.position[idx];
         let occupied = self.bitboards.all_occupied();
         let friendly_pieces = self.bitboards.occupied_by_color(moving_piece.color);
@@ -47,8 +48,8 @@ impl Position {
     }
 
     /// Generate bishop moves (backward-compatible wrapper)
-    pub fn bishop_moves(&self, idx: usize, include_friendly: bool) -> Vec<Move> {
-        let mut moves: Vec<Move> = Vec::with_capacity(13);  // Bishops have max 13 moves (7+6 diagonals)
+    pub fn bishop_moves(&self, idx: usize, include_friendly: bool) -> SmallVec<[Move; 64]> {
+        let mut moves: SmallVec<[Move; 64]> = SmallVec::with_capacity(13);  // Bishops have max 13 moves (7+6 diagonals)
         self.bishop_moves_into(idx, include_friendly, &mut moves);
         moves
     }

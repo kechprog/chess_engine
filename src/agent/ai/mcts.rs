@@ -3,6 +3,7 @@
 use crate::game_repr::{Position, Move, Color};
 use super::evaluation::{evaluate, quick_evaluate};
 use super::move_ordering::{generate_ordered_moves, generate_all_ordered_moves};
+use smallvec::SmallVec;
 use std::f64;
 
 // MCTS configuration constants
@@ -29,7 +30,7 @@ struct MCTSNode {
     /// Whether all possible children have been expanded
     fully_expanded: bool,
     /// All available moves from this position (for progressive widening)
-    available_moves: Vec<Move>,
+    available_moves: SmallVec<[Move; 64]>,
     /// Number of children currently expanded
     expanded_children_count: usize,
 }
@@ -406,7 +407,7 @@ impl MCTSTree {
 
     /// Select a move during playout using evaluation guidance
     /// Uses 2-ply evaluation: considers opponent's best response before evaluating
-    fn select_playout_move(&self, pos: &Position, moves: &[Move], color: Color) -> Move {
+    fn select_playout_move(&self, pos: &Position, moves: &SmallVec<[Move; 64]>, color: Color) -> Move {
         if moves.is_empty() {
             panic!("select_playout_move called with empty moves");
         }

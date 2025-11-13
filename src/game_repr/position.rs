@@ -1,6 +1,7 @@
 use super::*;
 use super::bitboards::{Bitboards, pop_lsb, bitscan_forward};
 use super::bitboards::tables::*;
+use smallvec::SmallVec;
 
 /*
  * MODULE IS RESPONSIBLE FOR
@@ -374,7 +375,7 @@ impl Position {
 
     /// Generate legal moves for a piece into a provided buffer
     /// The buffer is NOT cleared before adding moves
-    pub fn legal_moves_into(&self, idx: usize, moves: &mut Vec<Move>) {
+    pub fn legal_moves_into(&self, idx: usize, moves: &mut SmallVec<[Move; 64]>) {
         let initial_len = moves.len();
 
         // Generate pseudo-legal moves into the buffer
@@ -400,8 +401,8 @@ impl Position {
     }
 
     /// Generate legal moves for a piece (backward-compatible wrapper)
-    pub fn legal_moves(&self, idx: usize) -> Vec<Move> {
-        let mut moves = Vec::with_capacity(40);
+    pub fn legal_moves(&self, idx: usize) -> SmallVec<[Move; 64]> {
+        let mut moves = SmallVec::new();
         self.legal_moves_into(idx, &mut moves);
         moves
     }
@@ -662,7 +663,7 @@ impl Position {
 
     /// Generate all legal moves for the current side into a provided buffer
     /// The buffer is cleared before adding moves
-    pub fn all_legal_moves_into(&self, moves: &mut Vec<Move>) {
+    pub fn all_legal_moves_into(&self, moves: &mut SmallVec<[Move; 64]>) {
         moves.clear();
 
         let current_side = if self.prev_moves.len() % 2 == 0 {
@@ -746,8 +747,8 @@ impl Position {
     }
 
     /// Returns all legal moves for the current side to move (backward-compatible wrapper)
-    pub fn all_legal_moves(&self) -> Vec<Move> {
-        let mut all_moves = Vec::with_capacity(40);  // Typical position has 30-40 legal moves
+    pub fn all_legal_moves(&self) -> SmallVec<[Move; 64]> {
+        let mut all_moves = SmallVec::new();
         self.all_legal_moves_into(&mut all_moves);
         all_moves
     }
@@ -880,7 +881,7 @@ impl Position {
         }
 
         // Use a reusable buffer for move generation
-        let mut moves = Vec::with_capacity(128);
+        let mut moves = SmallVec::<[Move; 64]>::new();
         self.all_legal_moves_into(&mut moves);
 
         // Bulk counting optimization for depth 1
@@ -892,7 +893,7 @@ impl Position {
         if depth == 2 {
             let mut count = 0;
             let mut pos = self.clone();
-            let mut child_moves = Vec::with_capacity(128);
+            let mut child_moves = SmallVec::<[Move; 64]>::new();
 
             for mv in moves {
                 let undo = pos.make_move_undoable(mv);

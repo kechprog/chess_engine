@@ -1,3 +1,4 @@
+use smallvec::SmallVec;
 use crate::game_repr::{MoveType, Move, Color};
 use crate::game_repr::bitboards::{pop_lsb, tables::KING_ATTACKS};
 
@@ -8,7 +9,7 @@ use super::super::{
 
 impl Position {
     /// Generate king moves into a provided buffer
-    pub fn king_moves_into(&self, idx: usize, moves: &mut Vec<Move>) {
+    pub fn king_moves_into(&self, idx: usize, moves: &mut SmallVec<[Move; 64]>) {
         let king_color = self.position[idx].color;
 
         // Get all squares the king can attack using the precomputed table
@@ -102,8 +103,8 @@ impl Position {
     }
 
     /// Generate king moves (backward-compatible wrapper)
-    pub fn king_moves(&self, idx: usize) -> Vec<Move> {
-        let mut moves = Vec::with_capacity(10);  // Kings have max 8 normal moves + 2 castling
+    pub fn king_moves(&self, idx: usize) -> SmallVec<[Move; 64]> {
+        let mut moves = SmallVec::with_capacity(10);  // Kings have max 8 normal moves + 2 castling
         self.king_moves_into(idx, &mut moves);
         moves
     }

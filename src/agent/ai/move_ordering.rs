@@ -1,6 +1,7 @@
 // Move ordering with incremental generation for efficient search
 
 use crate::game_repr::{Position, Move, MoveType, Color, Type};
+use smallvec::SmallVec;
 
 /// Score for move ordering (higher = better)
 #[derive(Debug, Clone, Copy)]
@@ -102,9 +103,9 @@ fn gives_check(pos: &Position, mov: Move, color: Color) -> bool {
 /// 4. Good positional moves
 ///
 /// This avoids generating and evaluating all moves when we only need the best ones
-pub fn generate_ordered_moves(pos: &Position, color: Color, limit: usize) -> Vec<Move> {
+pub fn generate_ordered_moves(pos: &Position, color: Color, limit: usize) -> SmallVec<[Move; 64]> {
     // Generate all legal moves
-    let mut all_moves = Vec::new();
+    let mut all_moves = SmallVec::new();
     pos.all_legal_moves_into(&mut all_moves);
 
     // If we have fewer moves than the limit, just return all moves
@@ -113,7 +114,7 @@ pub fn generate_ordered_moves(pos: &Position, color: Color, limit: usize) -> Vec
     }
 
     // Score all moves
-    let mut scored_moves: Vec<MoveScore> = all_moves
+    let mut scored_moves: SmallVec<[MoveScore; 64]> = all_moves
         .into_iter()
         .map(|mov| MoveScore {
             mov,
@@ -133,12 +134,12 @@ pub fn generate_ordered_moves(pos: &Position, color: Color, limit: usize) -> Vec
 
 /// Generate all legal moves with full ordering
 /// Useful for tree expansion where we want all moves but in good order
-pub fn generate_all_ordered_moves(pos: &Position, color: Color) -> Vec<Move> {
-    let mut all_moves = Vec::new();
+pub fn generate_all_ordered_moves(pos: &Position, color: Color) -> SmallVec<[Move; 64]> {
+    let mut all_moves = SmallVec::new();
     pos.all_legal_moves_into(&mut all_moves);
 
     // Score all moves
-    let mut scored_moves: Vec<MoveScore> = all_moves
+    let mut scored_moves: SmallVec<[MoveScore; 64]> = all_moves
         .into_iter()
         .map(|mov| MoveScore {
             mov,

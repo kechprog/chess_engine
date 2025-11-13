@@ -1,3 +1,4 @@
+use smallvec::SmallVec;
 use crate::game_repr::{MoveType, Move};
 use crate::game_repr::bitboards::{pop_lsb, bitscan_forward, tables::*};
 
@@ -5,7 +6,7 @@ use super::super::position::Position;
 
 impl Position {
     /// Generate rook moves into a provided buffer
-    pub fn rook_moves_into(&self, idx: usize, include_friendly: bool, moves: &mut Vec<Move>) {
+    pub fn rook_moves_into(&self, idx: usize, include_friendly: bool, moves: &mut SmallVec<[Move; 64]>) {
         let moving_piece = self.position[idx];
         let occupied = self.bitboards.all_occupied();
         let friendly_pieces = self.bitboards.occupied_by_color(moving_piece.color);
@@ -47,8 +48,8 @@ impl Position {
     }
 
     /// Generate rook moves (backward-compatible wrapper)
-    pub fn rook_moves(&self, idx: usize, include_friendly: bool) -> Vec<Move> {
-        let mut moves = Vec::with_capacity(14);  // Rooks have max 14 moves (7 per direction)
+    pub fn rook_moves(&self, idx: usize, include_friendly: bool) -> SmallVec<[Move; 64]> {
+        let mut moves = SmallVec::with_capacity(14);  // Rooks have max 14 moves (7 per direction)
         self.rook_moves_into(idx, include_friendly, &mut moves);
         moves
     }
