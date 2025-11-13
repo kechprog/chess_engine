@@ -100,14 +100,14 @@ impl Bitboards {
     }
 
     /// Get bitboard for a specific piece type and color
-    #[inline]
+    #[inline(always)]
     pub fn pieces_of_type(&self, color: Color, piece_type: Type) -> u64 {
         let idx = piece_type_to_index(color, piece_type);
         self.pieces[idx]
     }
 
     /// Get bitboard for all pieces of a color
-    #[inline]
+    #[inline(always)]
     pub fn occupied_by_color(&self, color: Color) -> u64 {
         let base = match color {
             Color::White => 0,
@@ -118,7 +118,7 @@ impl Bitboards {
     }
 
     /// Get bitboard for all occupied squares
-    #[inline]
+    #[inline(always)]
     pub fn all_occupied(&self) -> u64 {
         self.occupied_by_color(Color::White) | self.occupied_by_color(Color::Black)
     }
@@ -157,7 +157,7 @@ impl Bitboards {
 }
 
 /// Convert color and piece type to bitboard index
-#[inline]
+#[inline(always)]
 fn piece_type_to_index(color: Color, piece_type: Type) -> usize {
     let base = match color {
         Color::White => 0,
@@ -178,7 +178,7 @@ fn piece_type_to_index(color: Color, piece_type: Type) -> usize {
 }
 
 /// Pop the least significant bit from a bitboard and return its index
-#[inline]
+#[inline(always)]
 pub fn pop_lsb(bb: &mut u64) -> usize {
     let sq = bb.trailing_zeros() as usize;
     *bb &= *bb - 1;  // Clear the LSB
@@ -186,7 +186,7 @@ pub fn pop_lsb(bb: &mut u64) -> usize {
 }
 
 /// Find the index of the least significant bit (without modifying the bitboard)
-#[inline]
+#[inline(always)]
 pub fn bitscan_forward(bb: u64) -> usize {
     bb.trailing_zeros() as usize
 }
