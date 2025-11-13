@@ -283,6 +283,7 @@ impl Position {
     /// Detects which pieces are pinned to the king and returns pin information
     /// Returns (pinned_pieces_bitboard, pin_rays_array)
     /// pin_rays_array[square] contains a bitboard of valid squares the pinned piece can move to
+    #[inline]
     fn detect_pins(&self, king_color: Color) -> (u64, [u64; 64]) {
         let mut pinned_pieces = 0u64;
         let mut pin_rays = [0u64; 64];
@@ -295,76 +296,109 @@ impl Position {
         let king_square = bitscan_forward(king_bb);
 
         let occupied = self.bitboards.all_occupied();
+        let enemy_color = king_color.opposite();
 
-        // Check all 8 directions for potential pins
-        for &direction in &[NORTH, NORTH_EAST, EAST, SOUTH_EAST, SOUTH, SOUTH_WEST, WEST, NORTH_WEST] {
-            let ray = RAYS[direction][king_square];
-            let blockers_on_ray = ray & occupied;
+        // Get enemy sliding pieces for quick type checking
+        let enemy_bishops = self.bitboards.pieces_of_type(enemy_color, Type::Bishop);
+        let enemy_rooks = self.bitboards.pieces_of_type(enemy_color, Type::Rook);
+        let enemy_queens = self.bitboards.pieces_of_type(enemy_color, Type::Queen);
 
-            if blockers_on_ray == 0 {
-                continue;  // No pieces on this ray
-            }
+        // Check diagonal pins only if there are diagonal sliders
+        if enemy_bishops | enemy_queens != 0 {
+            for &direction in &[NORTH_EAST, NORTH_WEST, SOUTH_EAST, SOUTH_WEST] {
+                let ray = RAYS[direction][king_square];
+                let blockers_on_ray = ray & occupied;
 
-            // Find first two pieces on this ray from king outward
-            let first_blocker_sq = if direction == NORTH || direction == NORTH_EAST || direction == NORTH_WEST || direction == EAST {
-                bitscan_forward(blockers_on_ray)
-            } else {
-                63 - blockers_on_ray.leading_zeros() as usize
-            };
+                if blockers_on_ray == 0 {
+                    continue;  // No pieces on this ray
+                }
 
-            let first_piece = self.position[first_blocker_sq];
-
-            // Only interested if first blocker is our own piece
-            if first_piece.color != king_color {
-                continue;
-            }
-
-            // Remove first blocker and check for second blocker
-            let remaining_blockers = blockers_on_ray & !(1u64 << first_blocker_sq);
-            if remaining_blockers == 0 {
-                continue;  // No second piece
-            }
-
-            let second_blocker_sq = if direction == NORTH || direction == NORTH_EAST || direction == NORTH_WEST || direction == EAST {
-                bitscan_forward(remaining_blockers)
-            } else {
-                63 - remaining_blockers.leading_zeros() as usize
-            };
-
-            let second_piece = self.position[second_blocker_sq];
-
-            // Pin exists if second piece is enemy slider of correct type
-            if second_piece.color == king_color.opposite() {
-                let is_diagonal = direction == NORTH_EAST || direction == NORTH_WEST ||
-                                 direction == SOUTH_EAST || direction == SOUTH_WEST;
-                let is_orthogonal = direction == NORTH || direction == SOUTH ||
-                                   direction == EAST || direction == WEST;
-
-                let is_pinner = if is_diagonal {
-                    second_piece.piece_type == Type::Bishop || second_piece.piece_type == Type::Queen
-                } else if is_orthogonal {
-                    second_piece.piece_type == Type::Rook || second_piece.piece_type == Type::Queen
+                // Find first blocker
+                let first_blocker_sq = if direction == NORTH_EAST || direction == NORTH_WEST {
+                    bitscan_forward(blockers_on_ray)
                 } else {
-                    false
+                    63 - blockers_on_ray.leading_zeros() as usize
                 };
 
-                if is_pinner {
-                    // Mark this piece as pinned
+                let first_piece = self.position[first_blocker_sq];
+
+                // Only interested if first blocker is our own piece
+                if first_piece.color != king_color {
+                    continue;
+                }
+
+                // Remove first blocker and check for second blocker
+                let remaining_blockers = blockers_on_ray & !(1u64 << first_blocker_sq);
+                if remaining_blockers == 0 {
+                    continue;  // No second piece
+                }
+
+                let second_blocker_sq = if direction == NORTH_EAST || direction == NORTH_WEST {
+                    bitscan_forward(remaining_blockers)
+                } else {
+                    63 - remaining_blockers.leading_zeros() as usize
+                };
+
+                // Quick check: is the second blocker an enemy diagonal slider?
+                let second_blocker_bit = 1u64 << second_blocker_sq;
+                if (second_blocker_bit & (enemy_bishops | enemy_queens)) != 0 {
+                    // Pin exists!
                     pinned_pieces |= 1u64 << first_blocker_sq;
 
-                    // Calculate the pin ray: the pinned piece can move along the line from king to pinner
-                    // This includes:
-                    // 1. Squares between king and pinned piece (towards king)
-                    // 2. Squares between pinned piece and pinner (towards pinner)
-                    // 3. The pinner square itself (capture)
-
+                    // Calculate the pin ray
                     let ray_from_king = RAYS[direction][king_square];
                     let ray_from_pinner = RAYS[direction][second_blocker_sq];
+                    pin_rays[first_blocker_sq] = ray_from_king & !(ray_from_pinner);
+                }
+            }
+        }
 
-                    // Everything on the ray from king that is NOT beyond the pinner
-                    let pin_ray = ray_from_king & !(ray_from_pinner);
+        // Check orthogonal pins only if there are orthogonal sliders
+        if enemy_rooks | enemy_queens != 0 {
+            for &direction in &[NORTH, SOUTH, EAST, WEST] {
+                let ray = RAYS[direction][king_square];
+                let blockers_on_ray = ray & occupied;
 
-                    pin_rays[first_blocker_sq] = pin_ray;
+                if blockers_on_ray == 0 {
+                    continue;  // No pieces on this ray
+                }
+
+                // Find first blocker
+                let first_blocker_sq = if direction == NORTH || direction == EAST {
+                    bitscan_forward(blockers_on_ray)
+                } else {
+                    63 - blockers_on_ray.leading_zeros() as usize
+                };
+
+                let first_piece = self.position[first_blocker_sq];
+
+                // Only interested if first blocker is our own piece
+                if first_piece.color != king_color {
+                    continue;
+                }
+
+                // Remove first blocker and check for second blocker
+                let remaining_blockers = blockers_on_ray & !(1u64 << first_blocker_sq);
+                if remaining_blockers == 0 {
+                    continue;  // No second piece
+                }
+
+                let second_blocker_sq = if direction == NORTH || direction == EAST {
+                    bitscan_forward(remaining_blockers)
+                } else {
+                    63 - remaining_blockers.leading_zeros() as usize
+                };
+
+                // Quick check: is the second blocker an enemy orthogonal slider?
+                let second_blocker_bit = 1u64 << second_blocker_sq;
+                if (second_blocker_bit & (enemy_rooks | enemy_queens)) != 0 {
+                    // Pin exists!
+                    pinned_pieces |= 1u64 << first_blocker_sq;
+
+                    // Calculate the pin ray
+                    let ray_from_king = RAYS[direction][king_square];
+                    let ray_from_pinner = RAYS[direction][second_blocker_sq];
+                    pin_rays[first_blocker_sq] = ray_from_king & !(ray_from_pinner);
                 }
             }
         }
@@ -407,14 +441,10 @@ impl Position {
     }
 
     /// Checks if a square is under attack by any piece of the given color
+    #[inline]
     pub fn is_square_attacked(&self, square: usize, by_color: Color) -> bool {
-        let occupied = self.bitboards.all_occupied();
-
+        // Fast path: check non-sliding pieces first (cheaper)
         // Check for pawn attacks using reverse lookup
-        // We need to find where pawns of by_color would need to be to attack this square
-        // White pawns attack NE/NW (from lower squares), Black pawns attack SE/SW (from higher squares)
-        // So to check if square X is attacked by white pawns, we look at squares that white pawns attack from
-        // that would include X - which is the opposite color's attack pattern from X
         let opposite_color_idx = match by_color {
             Color::White => 1,  // Use black's attack pattern (from higher to lower)
             Color::Black => 0,  // Use white's attack pattern (from lower to higher)
@@ -440,46 +470,61 @@ impl Position {
         }
 
         // Check for sliding piece attacks (rook, bishop, queen)
-        // Check diagonal attacks (bishop and queen)
-        for &direction in &[NORTH_EAST, NORTH_WEST, SOUTH_EAST, SOUTH_WEST] {
-            let ray = RAYS[direction][square];
-            let blockers = ray & occupied;
+        // Compute occupied once
+        let occupied = self.bitboards.all_occupied();
 
-            if blockers != 0 {
-                // Find first blocker in this direction
-                let blocker_sq = if direction == NORTH_EAST || direction == NORTH_WEST {
-                    bitscan_forward(blockers)
-                } else {
-                    63 - blockers.leading_zeros() as usize
-                };
+        // Get enemy sliding pieces
+        let enemy_bishops = self.bitboards.pieces_of_type(by_color, Type::Bishop);
+        let enemy_rooks = self.bitboards.pieces_of_type(by_color, Type::Rook);
+        let enemy_queens = self.bitboards.pieces_of_type(by_color, Type::Queen);
+        let enemy_diagonal_sliders = enemy_bishops | enemy_queens;
+        let enemy_orthogonal_sliders = enemy_rooks | enemy_queens;
 
-                let blocker_piece = self.position[blocker_sq];
-                if blocker_piece.color == by_color
-                    && (blocker_piece.piece_type == Type::Bishop || blocker_piece.piece_type == Type::Queen)
-                {
-                    return true;
+        // Early exit if no sliding pieces
+        if enemy_diagonal_sliders == 0 && enemy_orthogonal_sliders == 0 {
+            return false;
+        }
+
+        // Check diagonal attacks (bishop and queen) - only if there are diagonal sliders
+        if enemy_diagonal_sliders != 0 {
+            for &direction in &[NORTH_EAST, NORTH_WEST, SOUTH_EAST, SOUTH_WEST] {
+                let ray = RAYS[direction][square];
+                let blockers = ray & occupied;
+
+                if blockers != 0 {
+                    // Find first blocker in this direction
+                    let blocker_sq = if direction == NORTH_EAST || direction == NORTH_WEST {
+                        bitscan_forward(blockers)
+                    } else {
+                        63 - blockers.leading_zeros() as usize
+                    };
+
+                    // Check if blocker is an enemy diagonal slider
+                    if (enemy_diagonal_sliders & (1u64 << blocker_sq)) != 0 {
+                        return true;
+                    }
                 }
             }
         }
 
-        // Check rank/file attacks (rook and queen)
-        for &direction in &[NORTH, SOUTH, EAST, WEST] {
-            let ray = RAYS[direction][square];
-            let blockers = ray & occupied;
+        // Check rank/file attacks (rook and queen) - only if there are orthogonal sliders
+        if enemy_orthogonal_sliders != 0 {
+            for &direction in &[NORTH, SOUTH, EAST, WEST] {
+                let ray = RAYS[direction][square];
+                let blockers = ray & occupied;
 
-            if blockers != 0 {
-                // Find first blocker in this direction
-                let blocker_sq = if direction == NORTH || direction == EAST {
-                    bitscan_forward(blockers)
-                } else {
-                    63 - blockers.leading_zeros() as usize
-                };
+                if blockers != 0 {
+                    // Find first blocker in this direction
+                    let blocker_sq = if direction == NORTH || direction == EAST {
+                        bitscan_forward(blockers)
+                    } else {
+                        63 - blockers.leading_zeros() as usize
+                    };
 
-                let blocker_piece = self.position[blocker_sq];
-                if blocker_piece.color == by_color
-                    && (blocker_piece.piece_type == Type::Rook || blocker_piece.piece_type == Type::Queen)
-                {
-                    return true;
+                    // Check if blocker is an enemy orthogonal slider
+                    if (enemy_orthogonal_sliders & (1u64 << blocker_sq)) != 0 {
+                        return true;
+                    }
                 }
             }
         }
@@ -501,7 +546,11 @@ impl Position {
     }
 
     /// Checks if a move is legal (doesn't leave/put the king in check)
+    #[inline]
     pub fn is_move_legal(&self, mv: Move) -> bool {
+        // Get the color of the piece being moved
+        let moving_color = self.position[mv._from()].color;
+
         // Create a minimal temporary position without cloning prev_moves
         let mut temp_position = Position {
             bitboards: self.bitboards,  // Copy bitboards (fast)
@@ -509,9 +558,6 @@ impl Position {
             prev_moves: Vec::new(),      // Don't clone the move history
             castling_cond: self.castling_cond,  // Copy array
         };
-
-        // Get the color of the piece being moved
-        let moving_color = temp_position.position[mv._from()].color;
 
         // Execute the move on the temporary position
         temp_position.mk_move(mv);
