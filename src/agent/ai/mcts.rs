@@ -507,79 +507,92 @@ impl MCTSTree {
 ///
 /// A tuple of (best_move, statistics)
 pub fn search_multithreaded(pos: &Position, color: Color, iterations: u32, num_threads: Option<usize>) -> (Option<Move>, MCTSStats) {
-    let num_threads = num_threads.unwrap_or_else(num_cpus::get);
-
-    // Single-threaded fallback for small iteration counts or single thread request
-    if num_threads == 1 || iterations < 100 {
+    // WASM builds always use single-threaded mode
+    // (Rayon supports WASM with wasm-bindgen-rayon, but requires nightly + complex setup)
+    #[cfg(target_arch = "wasm32")]
+    {
         let mut tree = MCTSTree::new(pos, color);
         let best_move = tree.search(pos, iterations);
         let stats = tree.get_stats();
         return (best_move, stats);
     }
 
-    let iterations_per_thread = iterations / num_threads as u32;
-    let extra_iterations = iterations % num_threads as u32;
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let num_threads = num_threads.unwrap_or_else(num_cpus::get);
 
-    // Run parallel searches
-    let results: Vec<_> = (0..num_threads)
-        .into_par_iter()
-        .map(|thread_id| {
-            // First thread gets the extra iterations
-            let thread_iterations = if thread_id == 0 {
-                iterations_per_thread + extra_iterations
-            } else {
-                iterations_per_thread
-            };
-
-            // Each thread creates its own tree and searches independently
+        // Single-threaded fallback for small iteration counts or single thread request
+        if num_threads == 1 || iterations < 100 {
             let mut tree = MCTSTree::new(pos, color);
-            tree.search(pos, thread_iterations);
-
-            // Return the root node's children with their visit counts
-            let mut move_visits = HashMap::new();
-            for child in &tree.root.children {
-                if let Some(mov) = child.mov {
-                    move_visits.insert(mov, child.visits);
-                }
-            }
-
-            (move_visits, tree.root.visits)
-        })
-        .collect();
-
-    // Merge results: sum visit counts across all trees
-    let mut combined_move_visits: HashMap<Move, u32> = HashMap::new();
-    let mut per_thread_visits = Vec::new();
-
-    for (move_visits, thread_root_visits) in results {
-        per_thread_visits.push(thread_root_visits);
-        for (mov, visits) in move_visits {
-            *combined_move_visits.entry(mov).or_insert(0) += visits;
+            let best_move = tree.search(pos, iterations);
+            let stats = tree.get_stats();
+            return (best_move, stats);
         }
+
+        let iterations_per_thread = iterations / num_threads as u32;
+        let extra_iterations = iterations % num_threads as u32;
+
+        // Run parallel searches
+        let results: Vec<_> = (0..num_threads)
+            .into_par_iter()
+            .map(|thread_id| {
+                // First thread gets the extra iterations
+                let thread_iterations = if thread_id == 0 {
+                    iterations_per_thread + extra_iterations
+                } else {
+                    iterations_per_thread
+                };
+
+                // Each thread creates its own tree and searches independently
+                let mut tree = MCTSTree::new(pos, color);
+                tree.search(pos, thread_iterations);
+
+                // Return the root node's children with their visit counts
+                let mut move_visits = HashMap::new();
+                for child in &tree.root.children {
+                    if let Some(mov) = child.mov {
+                        move_visits.insert(mov, child.visits);
+                    }
+                }
+
+                (move_visits, tree.root.visits)
+            })
+            .collect();
+
+        // Merge results: sum visit counts across all trees
+        let mut combined_move_visits: HashMap<Move, u32> = HashMap::new();
+        let mut per_thread_visits = Vec::new();
+
+        for (move_visits, thread_root_visits) in results {
+            per_thread_visits.push(thread_root_visits);
+            for (mov, visits) in move_visits {
+                *combined_move_visits.entry(mov).or_insert(0) += visits;
+            }
+        }
+
+        // Select move with highest combined visit count
+        let best_move = combined_move_visits
+            .iter()
+            .max_by_key(|(_, &visits)| visits)
+            .map(|(&mov, _)| mov);
+
+        let best_move_visits = best_move
+            .and_then(|m| combined_move_visits.get(&m).copied())
+            .unwrap_or(0);
+
+        let total_visits: u32 = per_thread_visits.iter().sum();
+        let num_unique_moves = combined_move_visits.len();
+
+        let stats = MCTSStats::from_multi_tree(
+            total_visits,
+            num_unique_moves,
+            best_move_visits,
+            num_threads,
+            per_thread_visits,
+        );
+
+        (best_move, stats)
     }
-
-    // Select move with highest combined visit count
-    let best_move = combined_move_visits
-        .iter()
-        .max_by_key(|(_, &visits)| visits)
-        .map(|(&mov, _)| mov);
-
-    let best_move_visits = best_move
-        .and_then(|m| combined_move_visits.get(&m).copied())
-        .unwrap_or(0);
-
-    let total_visits: u32 = per_thread_visits.iter().sum();
-    let num_unique_moves = combined_move_visits.len();
-
-    let stats = MCTSStats::from_multi_tree(
-        total_visits,
-        num_unique_moves,
-        best_move_visits,
-        num_threads,
-        per_thread_visits,
-    );
-
-    (best_move, stats)
 }
 
 /// Statistics about MCTS search

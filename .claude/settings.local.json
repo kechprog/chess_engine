@@ -28,7 +28,12 @@
       "Bash(\"/c/Program Files/Rust stable MSVC 1.90/bin/cargo.exe\" --version)",
       "Bash(export PATH:*)",
       "Bash(powershell -Command \"cd ''C:\\Users\\Eduar\\projects\\chess_engine-refactor''; cargo check\")",
-      "Bash(cmd.exe /c cargo check)"
+      "Bash(cmd.exe /c cargo check)",
+      "Bash(tee:*)",
+      "Bash(git worktree:*)",
+      "Bash(git branch:*)",
+      "Bash(git stash drop:*)",
+      "Bash(wasm-pack build:*)"
     ],
     "deny": [],
     "ask": []
