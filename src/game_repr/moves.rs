@@ -45,7 +45,7 @@ impl From<u16> for MoveType {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Move {
     buf: u16,
 }

@@ -3,7 +3,7 @@
 use crate::agent::player::Player;
 use crate::game_repr::{Color, Move};
 use crate::board::Board;
-use super::mcts::MCTSTree;
+use super::mcts::search_multithreaded;
 use std::sync::Arc;
 use std::cell::RefCell;
 use winit::event::WindowEvent;
@@ -16,6 +16,8 @@ pub struct AIPlayer {
     iterations: u32,
     /// Display name for this AI
     name: String,
+    /// Number of threads to use (None = auto-detect)
+    num_threads: Option<usize>,
 }
 
 impl AIPlayer {
@@ -26,26 +28,28 @@ impl AIPlayer {
     /// * `board` - Shared reference to the game board
     /// * `iterations` - Number of MCTS iterations to run per move (higher = stronger but slower)
     /// * `name` - Display name for this AI
+    /// * `num_threads` - Number of threads to use (None = auto-detect from CPU cores)
     ///
     /// # Examples
     ///
     /// ```rust,ignore
     /// let board = Arc::new(RefCell::new(Board::new(renderer)));
-    /// let ai = AIPlayer::new(board.clone(), 1000, "MCTS Bot".to_string());
+    /// let ai = AIPlayer::new(board.clone(), 1000, "MCTS Bot".to_string(), None);
     /// ```
-    pub fn new(board: Arc<RefCell<Board>>, iterations: u32, name: String) -> Self {
+    pub fn new(board: Arc<RefCell<Board>>, iterations: u32, name: String, num_threads: Option<usize>) -> Self {
         Self {
             board,
             iterations,
             name,
+            num_threads,
         }
     }
 
     /// Create a new AI player with default settings
     ///
-    /// Uses 1000 iterations and "AI (MCTS)" as the name
+    /// Uses 1000 iterations, "AI (MCTS)" as the name, and auto-detect threads
     pub fn new_default(board: Arc<RefCell<Board>>) -> Self {
-        Self::new(board, 1000, "AI (MCTS)".to_string())
+        Self::new(board, 1000, "AI (MCTS)".to_string(), None)
     }
 
     /// Create an AI player with specific difficulty level
@@ -54,6 +58,8 @@ impl AIPlayer {
     /// * Medium: 500 iterations (~0.5s per move)
     /// * Hard: 2000 iterations (~2s per move)
     /// * Expert: 5000 iterations (~5s per move)
+    ///
+    /// Uses auto-detect for number of threads.
     pub fn with_difficulty(board: Arc<RefCell<Board>>, difficulty: Difficulty) -> Self {
         let (iterations, name) = match difficulty {
             Difficulty::Easy => (100, "AI (Easy)"),
@@ -62,7 +68,17 @@ impl AIPlayer {
             Difficulty::Expert => (5000, "AI (Expert)"),
         };
 
-        Self::new(board, iterations, name.to_string())
+        Self::new(board, iterations, name.to_string(), None)
+    }
+
+    /// Set the number of threads to use for MCTS search
+    ///
+    /// # Arguments
+    ///
+    /// * `num_threads` - Number of threads (None = auto-detect)
+    pub fn with_threads(mut self, num_threads: Option<usize>) -> Self {
+        self.num_threads = num_threads;
+        self
     }
 }
 
@@ -81,6 +97,8 @@ impl Player for AIPlayer {
     /// This method runs MCTS for the configured number of iterations and returns
     /// the best move found. This is a blocking operation that may take several seconds
     /// depending on the iteration count.
+    ///
+    /// Uses multithreaded search with root parallelization for better performance.
     fn get_move(&mut self, color: Color) -> Option<Move> {
         // Get the current position from the board
         let position = {
@@ -88,17 +106,16 @@ impl Player for AIPlayer {
             board.position().clone()
         };
 
-        // Create MCTS tree and search
-        let mut tree = MCTSTree::new(&position, color);
-        let best_move = tree.search(&position, self.iterations);
+        // Use multithreaded search
+        let (best_move, stats) = search_multithreaded(&position, color, self.iterations, self.num_threads);
 
         // Log search statistics (optional, can be removed in production)
         if cfg!(debug_assertions) {
-            let stats = tree.get_stats();
             println!(
-                "[{}] Searched {} iterations, expanded {} children, best move visited {} times",
-                self.name, stats.root_visits, stats.num_children, stats.best_move_visits
+                "[{}] Searched {} iterations across {} threads, expanded {} unique moves, best move visited {} times",
+                self.name, stats.root_visits, stats.num_threads, stats.num_children, stats.best_move_visits
             );
+            println!("  Per-thread visits: {:?}", stats.per_thread_visits);
         }
 
         best_move
