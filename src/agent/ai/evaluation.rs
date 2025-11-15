@@ -560,6 +560,7 @@ fn evaluate_rook_features(pos: &Position, color: Color) -> TaperedScore {
     score
 }
 
+
 /// Main evaluation function
 /// Returns score in centipawns from the perspective of the side to move
 /// Positive score = good for side to move
@@ -567,41 +568,31 @@ pub fn evaluate(pos: &Position, side_to_move: Color) -> i32 {
     let phase = calculate_game_phase(pos);
     let is_endgame = phase < 128;
 
-    // Material and positional evaluation (still uses old PST, will be converted later)
     let material_score = evaluate_material_and_position(pos, is_endgame);
 
-    // Tapered evaluation components
     let mut white_score = TaperedScore::default();
     let mut black_score = TaperedScore::default();
 
-    // King safety
     white_score.add(evaluate_king_safety(pos, Color::White));
     black_score.add(evaluate_king_safety(pos, Color::Black));
 
-    // Pawn structure
     white_score.add(evaluate_pawn_structure(pos, Color::White));
     black_score.add(evaluate_pawn_structure(pos, Color::Black));
 
-    // Piece mobility
     white_score.add(evaluate_mobility(pos, Color::White));
     black_score.add(evaluate_mobility(pos, Color::Black));
 
-    // Bishop pair bonus
     white_score.add(evaluate_bishop_pair(pos, Color::White));
     black_score.add(evaluate_bishop_pair(pos, Color::Black));
 
-    // Rook features (open files, 7th rank, connected rooks)
     white_score.add(evaluate_rook_features(pos, Color::White));
     black_score.add(evaluate_rook_features(pos, Color::Black));
 
-    // Interpolate tapered scores based on game phase
     let white_tapered = white_score.interpolate(phase);
     let black_tapered = black_score.interpolate(phase);
 
-    // Combine material (non-tapered) with tapered positional features
     let total_score = material_score + white_tapered - black_tapered;
 
-    // Return from perspective of side to move
     match side_to_move {
         Color::White => total_score,
         Color::Black => -total_score,
@@ -613,12 +604,12 @@ pub fn evaluate(pos: &Position, side_to_move: Color) -> i32 {
 pub fn quick_evaluate(pos: &Position, side_to_move: Color) -> i32 {
     let is_endgame = is_endgame(pos);
     let score = evaluate_material_and_position(pos, is_endgame);
-
     match side_to_move {
         Color::White => score,
         Color::Black => -score,
     }
 }
+
 
 #[cfg(test)]
 mod tests {

@@ -1,3 +1,5 @@
+#![cfg_attr(target_arch = "wasm32", crate_type = "cdylib")]
+
 pub mod agent;
 pub mod assets;
 pub mod board;

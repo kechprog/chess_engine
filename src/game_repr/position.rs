@@ -2,6 +2,10 @@ use super::*;
 use super::bitboards::{Bitboards, pop_lsb, bitscan_forward};
 use super::bitboards::tables::*;
 use smallvec::SmallVec;
+use crate::game_repr::zobrist::{
+    current_en_passant_square, recompute_hash, toggle_castling_diff, toggle_en_passant,
+    toggle_piece, toggle_side_to_move, FORCE_RECOMPUTE_HASH,
+};
 
 /*
  * MODULE IS RESPONSIBLE FOR
@@ -21,6 +25,7 @@ pub struct Position {
     /// KingRook, QueenRook, King - white  |  R  |  K  |  Q  | R
     /// KingRook, QueenRook, King - black  |  R  |  Q  |  K  | R
     pub castling_cond: [bool; 6],
+    pub hash: u64,
 }
 
 #[derive(Clone, Copy)]
@@ -110,11 +115,14 @@ impl Position {
             prev_moves.push(Move::new(0, 0, MoveType::Normal));
         }
 
+        let hash = crate::game_repr::zobrist::recompute_hash_raw(&bitboards, &board, &prev_moves, &castling_cond);
+
         Self {
             bitboards,
             position: board,
             prev_moves,
             castling_cond,
+            hash,
         }
     }
 
@@ -123,6 +131,14 @@ impl Position {
         let to = _move._to();
         let moving_piece = self.position[from];
         let captured_piece = self.position[to];
+
+        let mut hash = self.hash;
+
+        if let Some(ep_sq) = current_en_passant_square(&self.position, &self.prev_moves) {
+            toggle_en_passant(&mut hash, ep_sq);
+        }
+
+        let castling_before = self.castling_cond;
 
         // Update castling conditions BEFORE making the move
         // If king moves, disable castling for that color
@@ -155,85 +171,106 @@ impl Position {
             }
         }
 
+        toggle_castling_diff(&mut hash, &castling_before, &self.castling_cond);
+
         match _move.move_type(){
             MoveType::Normal => {
                 // Update bitboards: remove captured piece if any
                 if captured_piece.piece_type != Type::None {
                     self.bitboards.remove_piece(captured_piece.color, captured_piece.piece_type, to);
+                    toggle_piece(&mut hash, captured_piece, to);
                 }
                 // Move piece in bitboards
                 self.bitboards.move_piece(moving_piece.color, moving_piece.piece_type, from, to);
+                toggle_piece(&mut hash, moving_piece, from);
+                toggle_piece(&mut hash, moving_piece, to);
 
                 // Update mailbox
                 self.position[to] = self.position[from];
                 self.position[from] = Piece::default();
             },
             MoveType::PromotionQueen => {
+                let promoted_piece = Piece {
+                    piece_type: Type::Queen,
+                    color: moving_piece.color,
+                };
                 // Remove pawn from bitboards
                 self.bitboards.remove_piece(moving_piece.color, Type::Pawn, from);
+                toggle_piece(&mut hash, moving_piece, from);
                 // Remove captured piece if any
                 if captured_piece.piece_type != Type::None {
                     self.bitboards.remove_piece(captured_piece.color, captured_piece.piece_type, to);
+                    toggle_piece(&mut hash, captured_piece, to);
                 }
                 // Add queen to bitboards
                 self.bitboards.add_piece(moving_piece.color, Type::Queen, to);
+                toggle_piece(&mut hash, promoted_piece, to);
 
                 // Update mailbox
-                self.position[to] = Piece{
-                    piece_type: Type::Queen,
-                    color: self.position[from].color
-                };
+                self.position[to] = promoted_piece;
                 self.position[from] = Piece::default();
             },
             MoveType::PromotionRook => {
+                let promoted_piece = Piece {
+                    piece_type: Type::Rook,
+                    color: moving_piece.color,
+                };
                 // Remove pawn from bitboards
                 self.bitboards.remove_piece(moving_piece.color, Type::Pawn, from);
+                toggle_piece(&mut hash, moving_piece, from);
                 // Remove captured piece if any
                 if captured_piece.piece_type != Type::None {
                     self.bitboards.remove_piece(captured_piece.color, captured_piece.piece_type, to);
+                    toggle_piece(&mut hash, captured_piece, to);
                 }
                 // Add rook to bitboards
                 self.bitboards.add_piece(moving_piece.color, Type::Rook, to);
+                toggle_piece(&mut hash, promoted_piece, to);
 
                 // Update mailbox
-                self.position[to] = Piece{
-                    piece_type: Type::Rook,
-                    color: self.position[from].color
-                };
+                self.position[to] = promoted_piece;
                 self.position[from] = Piece::default();
             },
             MoveType::PromotionBishop => {
+                let promoted_piece = Piece {
+                    piece_type: Type::Bishop,
+                    color: moving_piece.color,
+                };
                 // Remove pawn from bitboards
                 self.bitboards.remove_piece(moving_piece.color, Type::Pawn, from);
+                toggle_piece(&mut hash, moving_piece, from);
                 // Remove captured piece if any
                 if captured_piece.piece_type != Type::None {
                     self.bitboards.remove_piece(captured_piece.color, captured_piece.piece_type, to);
+                    toggle_piece(&mut hash, captured_piece, to);
                 }
                 // Add bishop to bitboards
                 self.bitboards.add_piece(moving_piece.color, Type::Bishop, to);
+                toggle_piece(&mut hash, promoted_piece, to);
 
                 // Update mailbox
-                self.position[to] = Piece{
-                    piece_type: Type::Bishop,
-                    color: self.position[from].color
-                };
+                self.position[to] = promoted_piece;
                 self.position[from] = Piece::default();
             },
             MoveType::PromotionKnight => {
+                let promoted_piece = Piece {
+                    piece_type: Type::Knight,
+                    color: moving_piece.color,
+                };
                 // Remove pawn from bitboards
                 self.bitboards.remove_piece(moving_piece.color, Type::Pawn, from);
+                toggle_piece(&mut hash, moving_piece, from);
                 // Remove captured piece if any
                 if captured_piece.piece_type != Type::None {
                     self.bitboards.remove_piece(captured_piece.color, captured_piece.piece_type, to);
+                    toggle_piece(&mut hash, captured_piece, to);
                 }
                 // Add knight to bitboards
                 self.bitboards.add_piece(moving_piece.color, Type::Knight, to);
+                toggle_piece(&mut hash, promoted_piece, to);
 
                 // Update mailbox
-                self.position[to] = Piece{
-                    piece_type: Type::Knight,
-                    color: self.position[from].color
-                };
+                self.position[to] = promoted_piece;
                 self.position[from] = Piece::default();
             },
             MoveType::EnPassant => {
@@ -245,8 +282,11 @@ impl Position {
 
                 // Remove captured pawn from bitboards
                 self.bitboards.remove_piece(captured_pawn.color, Type::Pawn, captured_pawn_sq);
+                toggle_piece(&mut hash, captured_pawn, captured_pawn_sq);
                 // Move attacking pawn in bitboards
                 self.bitboards.move_piece(moving_piece.color, Type::Pawn, from, to);
+                toggle_piece(&mut hash, moving_piece, from);
+                toggle_piece(&mut hash, moving_piece, to);
 
                 // Update mailbox
                 self.position[captured_pawn_sq] = Piece::default();
@@ -265,10 +305,19 @@ impl Position {
                     (Color::Black, false) => (56, 59),// Queenside: a8 -> d8
                 };
 
+                let rook_piece = Piece {
+                    piece_type: Type::Rook,
+                    color: moving_piece.color,
+                };
+
                 // Move king in bitboards
                 self.bitboards.move_piece(moving_piece.color, Type::King, from, to);
+                toggle_piece(&mut hash, moving_piece, from);
+                toggle_piece(&mut hash, moving_piece, to);
                 // Move rook in bitboards
                 self.bitboards.move_piece(moving_piece.color, Type::Rook, rook_from, rook_to);
+                toggle_piece(&mut hash, rook_piece, rook_from);
+                toggle_piece(&mut hash, rook_piece, rook_to);
 
                 // Update mailbox
                 self.position[to] = self.position[from];
@@ -279,6 +328,17 @@ impl Position {
         }
 
         self.prev_moves.push(_move);
+
+        if let Some(ep_sq) = current_en_passant_square(&self.position, &self.prev_moves) {
+            toggle_en_passant(&mut hash, ep_sq);
+        }
+
+        toggle_side_to_move(&mut hash);
+        if FORCE_RECOMPUTE_HASH {
+            self.hash = recompute_hash(self);
+        } else {
+            self.hash = hash;
+        }
     }
 
     /// Detects which pieces are pinned to the king and returns pin information
@@ -558,6 +618,7 @@ impl Position {
             position: self.position,     // Copy array (stack-allocated, fast)
             prev_moves: Vec::new(),      // Don't clone the move history
             castling_cond: self.castling_cond,  // Copy array
+            hash: self.hash,
         };
 
         // Execute the move on the temporary position
@@ -822,7 +883,6 @@ impl Position {
         };
 
         self.mk_move(mv);
-
         undo
     }
 
@@ -831,11 +891,20 @@ impl Position {
         let from = mv._from() as usize;
         let to = mv._to() as usize;
 
+        let mut hash = self.hash;
+
+        if let Some(ep_sq) = current_en_passant_square(&self.position, &self.prev_moves) {
+            toggle_en_passant(&mut hash, ep_sq);
+        }
+
+        let castling_before = self.castling_cond;
         // Restore castling conditions
         self.castling_cond = undo.castling_cond;
+        toggle_castling_diff(&mut hash, &castling_before, &self.castling_cond);
 
         // Remove the move from history
         self.prev_moves.pop();
+        toggle_side_to_move(&mut hash);
 
         // Reverse the move based on type
         match mv.move_type() {
@@ -844,11 +913,14 @@ impl Position {
 
                 // Remove piece from destination in bitboards
                 self.bitboards.remove_piece(moved_piece.color, moved_piece.piece_type, to);
+                toggle_piece(&mut hash, moved_piece, to);
                 // Add piece back to source in bitboards
                 self.bitboards.add_piece(moved_piece.color, moved_piece.piece_type, from);
+                toggle_piece(&mut hash, moved_piece, from);
                 // Restore captured piece if any
                 if undo.captured_piece.piece_type != Type::None {
                     self.bitboards.add_piece(undo.captured_piece.color, undo.captured_piece.piece_type, to);
+                    toggle_piece(&mut hash, undo.captured_piece, to);
                 }
 
                 // Update mailbox
@@ -864,10 +936,13 @@ impl Position {
 
                 // Remove pawn from destination in bitboards
                 self.bitboards.remove_piece(moved_piece.color, Type::Pawn, to);
+                toggle_piece(&mut hash, moved_piece, to);
                 // Add pawn back to source in bitboards
                 self.bitboards.add_piece(moved_piece.color, Type::Pawn, from);
+                toggle_piece(&mut hash, moved_piece, from);
                 // Restore captured pawn in bitboards
                 self.bitboards.add_piece(undo.captured_piece.color, Type::Pawn, captured_sq);
+                toggle_piece(&mut hash, undo.captured_piece, captured_sq);
 
                 // Update mailbox
                 self.position[from] = self.position[to];
@@ -884,10 +959,19 @@ impl Position {
                     (Color::Black, false) => (56, 59),
                 };
 
+                let rook_piece = Piece {
+                    piece_type: Type::Rook,
+                    color: king.color,
+                };
+
                 // Reverse king move in bitboards
                 self.bitboards.move_piece(king.color, Type::King, to, from);
+                toggle_piece(&mut hash, king, to);
+                toggle_piece(&mut hash, king, from);
                 // Reverse rook move in bitboards
                 self.bitboards.move_piece(king.color, Type::Rook, rook_to, rook_from);
+                toggle_piece(&mut hash, rook_piece, rook_to);
+                toggle_piece(&mut hash, rook_piece, rook_from);
 
                 // Update mailbox
                 self.position[from] = self.position[to];
@@ -899,23 +983,37 @@ impl Position {
             MoveType::PromotionBishop | MoveType::PromotionKnight => {
                 let promoted_piece = self.position[to];
                 let original_color = promoted_piece.color;
+                let pawn_piece = Piece {
+                    piece_type: Type::Pawn,
+                    color: original_color,
+                };
 
                 // Remove promoted piece from destination in bitboards
                 self.bitboards.remove_piece(promoted_piece.color, promoted_piece.piece_type, to);
+                toggle_piece(&mut hash, promoted_piece, to);
                 // Add pawn back to source in bitboards
                 self.bitboards.add_piece(original_color, Type::Pawn, from);
+                toggle_piece(&mut hash, pawn_piece, from);
                 // Restore captured piece if any
                 if undo.captured_piece.piece_type != Type::None {
                     self.bitboards.add_piece(undo.captured_piece.color, undo.captured_piece.piece_type, to);
+                    toggle_piece(&mut hash, undo.captured_piece, to);
                 }
 
                 // Update mailbox
-                self.position[from] = Piece {
-                    piece_type: Type::Pawn,
-                    color: original_color
-                };
+                self.position[from] = pawn_piece;
                 self.position[to] = undo.captured_piece;
             },
+        }
+
+        if let Some(ep_sq) = current_en_passant_square(&self.position, &self.prev_moves) {
+            toggle_en_passant(&mut hash, ep_sq);
+        }
+
+        if FORCE_RECOMPUTE_HASH {
+            self.hash = recompute_hash(self);
+        } else {
+            self.hash = hash;
         }
     }
 

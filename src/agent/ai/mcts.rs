@@ -1,6 +1,6 @@
 // Monte Carlo Tree Search implementation with evaluation-guided playouts and progressive widening
 
-use crate::game_repr::{Position, Move, Color};
+use crate::game_repr::{Position, Move, Color, UndoInfo};
 use super::evaluation::{evaluate, quick_evaluate};
 use super::move_ordering::{generate_ordered_moves, generate_all_ordered_moves};
 use smallvec::SmallVec;
@@ -15,6 +15,7 @@ const PROGRESSIVE_WIDENING_CONSTANT: f64 = 3.0; // Controls how fast we add chil
 const INITIAL_CHILDREN_COUNT: usize = 15; // Start with top 15 moves
 const PLAYOUT_DEPTH_LIMIT: usize = 50; // Maximum depth for playouts
 const PLAYOUT_MOVES_CONSIDERED: usize = 12; // Number of moves to consider during playout
+const PLAYOUT_HISTORY_INLINE: usize = 32;
 
 /// MCTS Node representing a game state in the search tree
 #[derive(Clone)]
@@ -77,7 +78,7 @@ impl MCTSNode {
 
     /// Expand one more child node
     /// Uses 2-ply evaluation: considers opponent's best response before evaluating
-    fn expand_one_child(&mut self, pos: &Position, color: Color, parent_color: Color) {
+    fn expand_one_child(&mut self, pos: &mut Position, color: Color, parent_color: Color) {
         if self.expanded_children_count >= self.available_moves.len() {
             self.fully_expanded = true;
             return;
@@ -87,57 +88,55 @@ impl MCTSNode {
         self.expanded_children_count += 1;
 
         // Make move to create child position
-        let mut child_pos = pos.clone();
-        child_pos.make_move_undoable(mov);
+        let undo_child = pos.make_move_undoable(mov);
 
         // Use 2-ply evaluation: consider opponent's best response
         // After making our move, it's opponent's turn (color.opposite())
         let eval_score = if color == parent_color {
             // We just made our move, now it's opponent's turn
             // Need to consider their best response (2-ply)
-            let opponent_moves = generate_ordered_moves(&child_pos, color.opposite(), 5);
+            let opponent_moves = generate_ordered_moves(pos, color.opposite(), 5);
 
             if opponent_moves.is_empty() {
                 // No opponent moves (checkmate or stalemate)
-                quick_evaluate(&child_pos, parent_color)
+                quick_evaluate(pos, parent_color)
             } else {
                 // Try opponent's best moves and find worst case for us
                 let mut worst_case_eval = i32::MAX;
                 for &opp_mov in opponent_moves.iter().take(5) {
-                    let mut pos_after_opponent = child_pos.clone();
-                    pos_after_opponent.make_move_undoable(opp_mov);
-
+                    let undo_opp = pos.make_move_undoable(opp_mov);
                     // Now it's our turn again - evaluate from our perspective
-                    let eval = quick_evaluate(&pos_after_opponent, parent_color);
+                    let eval = quick_evaluate(pos, parent_color);
                     worst_case_eval = worst_case_eval.min(eval);
+                    pos.unmake_move(opp_mov, undo_opp);
                 }
                 worst_case_eval
             }
         } else {
             // It's opponent's turn to move, we need to evaluate from their perspective
             // (this happens at odd depths in the tree)
-            let opponent_moves = generate_ordered_moves(&child_pos, color.opposite(), 5);
+            let opponent_moves = generate_ordered_moves(pos, color.opposite(), 5);
 
             if opponent_moves.is_empty() {
-                // No opponent moves
-                quick_evaluate(&child_pos, parent_color)
+                quick_evaluate(pos, parent_color)
             } else {
                 // Try opponent's moves and find worst case from parent's perspective
                 let mut worst_case_eval = i32::MAX;
                 for &opp_mov in opponent_moves.iter().take(5) {
-                    let mut pos_after_opponent = child_pos.clone();
-                    pos_after_opponent.make_move_undoable(opp_mov);
-
-                    let eval = quick_evaluate(&pos_after_opponent, parent_color);
+                    let undo_opp = pos.make_move_undoable(opp_mov);
+                    let eval = quick_evaluate(pos, parent_color);
                     worst_case_eval = worst_case_eval.min(eval);
+                    pos.unmake_move(opp_mov, undo_opp);
                 }
                 worst_case_eval
             }
         };
 
         // Create child node with evaluation-guided bias
-        let child_node = MCTSNode::new_with_eval_score(Some(mov), &child_pos, color.opposite(), eval_score);
+        let child_node = MCTSNode::new_with_eval_score(Some(mov), pos, color.opposite(), eval_score);
         self.children.push(child_node);
+
+        pos.unmake_move(mov, undo_child);
 
         if self.expanded_children_count >= self.available_moves.len() {
             self.fully_expanded = true;
@@ -264,33 +263,20 @@ impl MCTSTree {
     /// Single MCTS iteration (selection, expansion, simulation, backpropagation)
     fn iteration(&mut self, root_pos: &Position) {
         let mut pos = root_pos.clone();
-        let mut path: Vec<usize> = Vec::new();
-        let mut current_color = self.root_color;
 
-        // 1. Selection - traverse tree using UCB until we reach a leaf or expandable node
-        // Build the path by collecting child indices to follow
-        let selection_path = self.select(&pos);
-
-        // Apply the moves along the path
-        for &child_idx in &selection_path {
-            let node_ref = self.get_node_at_path(&path);
-            let mov = node_ref.children[child_idx].mov.unwrap();
-            pos.make_move_undoable(mov);
-            current_color = current_color.opposite();
-            path.push(child_idx);
-        }
+        // 1. Selection mutates `pos` in-place and returns the traversal path + side to move
+        let (path, current_color) = self.select(&mut pos);
 
         // 2. Simulation - play out the position using evaluation-guided policy
-        let playout_result = self.simulate(&pos, current_color);
+        let playout_result = self.simulate(&mut pos, current_color);
 
         // 3. Backpropagation - update statistics
         self.backpropagate(&path, playout_result);
     }
 
     /// Select phase: traverse tree and return path to leaf
-    fn select(&mut self, root_pos: &Position) -> Vec<usize> {
+    fn select(&mut self, pos: &mut Position) -> (Vec<usize>, Color) {
         let mut path = Vec::new();
-        let mut pos = root_pos.clone();
         let mut current_color = self.root_color;
         let root_color = self.root_color; // Copy to avoid borrow conflicts
 
@@ -313,19 +299,23 @@ impl MCTSTree {
 
             // Check if we should expand more children (progressive widening)
             if node.should_expand_more_children() {
-                node.expand_one_child(&pos, current_color, root_color);
+                node.expand_one_child(pos, current_color, root_color);
             }
 
             // If no children after expansion, this is a leaf
             if node.children.is_empty() {
-                break;
+                return (path, current_color);
             }
 
             // If we have unexplored children (visits == 0), select one and stop
             let unexplored_idx = node.children.iter().position(|child| child.visits == 0);
             if let Some(idx) = unexplored_idx {
                 path.push(idx);
-                break;
+                if let Some(mov) = node.children[idx].mov {
+                    pos.make_move_undoable(mov);
+                    current_color = current_color.opposite();
+                }
+                return (path, current_color);
             }
 
             // All children visited, select best using UCB and continue
@@ -339,7 +329,7 @@ impl MCTSTree {
             path.push(best_child_idx);
         }
 
-        path
+        (path, current_color)
     }
 
     /// Get node at a given path (immutable)
@@ -361,55 +351,50 @@ impl MCTSTree {
     }
 
     /// Simulate a game using evaluation-guided playout policy
-    fn simulate(&self, start_pos: &Position, start_color: Color) -> f64 {
-        let mut pos = start_pos.clone();
+    fn simulate(&self, pos: &mut Position, start_color: Color) -> f64 {
         let mut current_color = start_color;
         let mut depth = 0;
+        let mut history: SmallVec<[(Move, UndoInfo); PLAYOUT_HISTORY_INLINE]> = SmallVec::new();
 
-        // Play out until terminal state or depth limit
-        while depth < PLAYOUT_DEPTH_LIMIT {
-            // Check for terminal conditions
+        let outcome = loop {
+            if depth >= PLAYOUT_DEPTH_LIMIT {
+                let final_eval = evaluate(pos, self.root_color);
+                let normalized = (final_eval as f64 / 2000.0).clamp(-1.0, 1.0);
+                break normalized.tanh();
+            }
+
             if pos.is_checkmate(current_color) {
-                // Checkmate - bad for current player
-                return if current_color == self.root_color { -1.0 } else { 1.0 };
+                break if current_color == self.root_color { -1.0 } else { 1.0 };
             }
 
             if pos.is_stalemate(current_color) || !pos.has_legal_moves(current_color) {
-                // Stalemate or no moves - draw
-                return 0.0;
+                break 0.0;
             }
 
-            // Generate top moves using move ordering
-            let moves = generate_ordered_moves(&pos, current_color, PLAYOUT_MOVES_CONSIDERED);
-
+            let moves = generate_ordered_moves(pos, current_color, PLAYOUT_MOVES_CONSIDERED);
             if moves.is_empty() {
-                // No legal moves - draw
-                return 0.0;
+                break 0.0;
             }
 
-            // Select move probabilistically based on evaluation scores
-            let mov = self.select_playout_move(&pos, &moves, current_color);
-
-            // Make the move
-            pos.make_move_undoable(mov);
+            let mov = self.select_playout_move(pos, &moves, current_color);
+            let undo = pos.make_move_undoable(mov);
+            history.push((mov, undo));
             current_color = current_color.opposite();
             depth += 1;
+        };
+
+        // Undo simulated moves to restore position
+        while let Some((mov, undo)) = history.pop() {
+            current_color = current_color.opposite();
+            pos.unmake_move(mov, undo);
         }
 
-        // Depth limit reached - evaluate final position
-        let final_eval = evaluate(&pos, self.root_color);
-
-        // Convert evaluation to win probability (sigmoid-like)
-        // Normalize: roughly -2000 to +2000 centipawns -> -1.0 to +1.0
-        let normalized = (final_eval as f64 / 2000.0).clamp(-1.0, 1.0);
-
-        // Apply tanh for smoother win probability
-        normalized.tanh()
+        outcome
     }
 
     /// Select a move during playout using evaluation guidance
     /// Uses 2-ply evaluation: considers opponent's best response before evaluating
-    fn select_playout_move(&self, pos: &Position, moves: &SmallVec<[Move; 64]>, color: Color) -> Move {
+    fn select_playout_move(&self, pos: &mut Position, moves: &SmallVec<[Move; 64]>, color: Color) -> Move {
         if moves.is_empty() {
             panic!("select_playout_move called with empty moves");
         }
@@ -423,40 +408,34 @@ impl MCTSTree {
         let mut best_eval = i32::MIN;
 
         for &mov in moves {
-            let mut pos_after_our_move = pos.clone();
-            pos_after_our_move.make_move_undoable(mov);
+            let undo_move = pos.make_move_undoable(mov);
 
-            // Now it's opponent's turn - we need to see their best response
-            // Generate a few opponent moves to check
-            let opponent_moves = generate_ordered_moves(&pos_after_our_move, color.opposite(), 5);
+            let opponent_moves = generate_ordered_moves(pos, color.opposite(), 5);
 
             if opponent_moves.is_empty() {
-                // No opponent moves (checkmate or stalemate)
-                // Evaluate the position directly
-                let eval = evaluate(&pos_after_our_move, color);
+                let eval = evaluate(pos, color);
                 if eval > best_eval {
                     best_eval = eval;
                     best_move = mov;
                 }
+                pos.unmake_move(mov, undo_move);
                 continue;
             }
 
-            // Try opponent's best moves and find worst case for us
             let mut worst_case_eval = i32::MAX;
             for &opp_mov in opponent_moves.iter().take(5) {
-                let mut pos_after_opponent = pos_after_our_move.clone();
-                pos_after_opponent.make_move_undoable(opp_mov);
-
-                // Now it's our turn again - evaluate from our perspective
-                let eval = quick_evaluate(&pos_after_opponent, color);
+                let undo_opp = pos.make_move_undoable(opp_mov);
+                let eval = quick_evaluate(pos, color);
                 worst_case_eval = worst_case_eval.min(eval);
+                pos.unmake_move(opp_mov, undo_opp);
             }
 
-            // This move's score is the worst case after opponent responds
             if worst_case_eval > best_eval {
                 best_eval = worst_case_eval;
                 best_move = mov;
             }
+
+            pos.unmake_move(mov, undo_move);
         }
 
         best_move
