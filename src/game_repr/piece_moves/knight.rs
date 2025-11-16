@@ -23,11 +23,4 @@ impl Position {
             moves.push(Move::new(idx as u8, target_sq as u8, MoveType::Normal));
         }
     }
-
-    /// Generate knight moves (backward-compatible wrapper)
-    pub fn knight_moves(&self, idx: usize) -> SmallVec<[Move; 64]> {
-        let mut moves = SmallVec::with_capacity(8);  // Knights have max 8 moves
-        self.knight_moves_into(idx, &mut moves);
-        moves
-    }
 }

@@ -20,7 +20,8 @@
 //! ```rust,no_run
 //! use chess_engine::agent::player::{Player, GameResult};
 //! use chess_engine::game_repr::{Color, Move};
-//! use std::sync::{Arc, RefCell};
+//! use std::sync::Arc;
+//! use std::cell::RefCell;
 //!
 //! // Example: HumanPlayer construction (conceptual)
 //! // let board = Arc::new(RefCell::new(Board::new(renderer)));

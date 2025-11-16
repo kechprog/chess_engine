@@ -46,11 +46,4 @@ impl Position {
             }
         }
     }
-
-    /// Generate rook moves (backward-compatible wrapper)
-    pub fn rook_moves(&self, idx: usize, include_friendly: bool) -> SmallVec<[Move; 64]> {
-        let mut moves = SmallVec::with_capacity(14);  // Rooks have max 14 moves (7 per direction)
-        self.rook_moves_into(idx, include_friendly, &mut moves);
-        moves
-    }
 }

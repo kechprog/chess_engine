@@ -46,11 +46,4 @@ impl Position {
             }
         }
     }
-
-    /// Generate bishop moves (backward-compatible wrapper)
-    pub fn bishop_moves(&self, idx: usize, include_friendly: bool) -> SmallVec<[Move; 64]> {
-        let mut moves: SmallVec<[Move; 64]> = SmallVec::with_capacity(13);  // Bishops have max 13 moves (7+6 diagonals)
-        self.bishop_moves_into(idx, include_friendly, &mut moves);
-        moves
-    }
 }

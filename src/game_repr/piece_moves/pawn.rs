@@ -108,10 +108,4 @@ impl Position {
         moves.extend(promotion_moves);
     }
 
-    /// Generate pawn moves (backward-compatible wrapper)
-    pub fn pawn_moves(&self, idx: usize) -> SmallVec<[Move; 64]> {
-        let mut moves = SmallVec::with_capacity(16);  // Max: 4 moves × 4 promotion types
-        self.pawn_moves_into(idx, &mut moves);
-        moves
-    }
 }

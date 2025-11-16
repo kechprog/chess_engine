@@ -101,11 +101,4 @@ impl Position {
             }
         }
     }
-
-    /// Generate king moves (backward-compatible wrapper)
-    pub fn king_moves(&self, idx: usize) -> SmallVec<[Move; 64]> {
-        let mut moves = SmallVec::with_capacity(10);  // Kings have max 8 normal moves + 2 castling
-        self.king_moves_into(idx, &mut moves);
-        moves
-    }
 }
