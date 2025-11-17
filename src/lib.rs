@@ -19,6 +19,9 @@ mod wasm {
         window::{Window, WindowAttributes},
     };
 
+    // Re-export init_thread_pool for WASM multithreading support
+    pub use wasm_bindgen_rayon::init_thread_pool;
+
     /// User event type for async renderer initialization on WASM
     enum UserEvent {
         RendererReady(Box<WgpuRenderer>),

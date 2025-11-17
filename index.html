@@ -93,6 +93,23 @@
                 // Call the default init function to load the WASM binary
                 await wasmModule.default();
 
+                // Initialize the thread pool for multithreading support
+                // Use all available CPU cores for maximum performance
+                const numThreads = navigator.hardwareConcurrency || 4;
+                console.log(`Initializing thread pool with ${numThreads} threads...`);
+                await wasmModule.init_thread_pool(numThreads);
+                console.log('Thread pool initialized successfully!');
+
+                // Verify cross-origin isolation (required for SharedArrayBuffer)
+                if (crossOriginIsolated) {
+                    console.log('✓ Cross-origin isolation enabled - multithreading available');
+                } else {
+                    console.warn('⚠ Cross-origin isolation NOT enabled - multithreading may not work');
+                    console.warn('  Make sure your server sends these headers:');
+                    console.warn('  Cross-Origin-Opener-Policy: same-origin');
+                    console.warn('  Cross-Origin-Embedder-Policy: require-corp');
+                }
+
                 // The WASM module auto-initializes with #[wasm_bindgen(start)]
                 // Hide loading indicator after a short delay to ensure initialization
                 setTimeout(() => {

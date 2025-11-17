@@ -507,9 +507,9 @@ impl MCTSTree {
 ///
 /// A tuple of (best_move, statistics)
 pub fn search_multithreaded(pos: &Position, color: Color, iterations: u32, num_threads: Option<usize>) -> (Option<Move>, MCTSStats) {
-    // WASM builds always use single-threaded mode
-    // (Rayon supports WASM with wasm-bindgen-rayon, but requires nightly + complex setup)
-    #[cfg(target_arch = "wasm32")]
+    // Single-threaded fallback for WASM builds without atomics support
+    // With wasm-bindgen-rayon and atomics enabled, multithreading works on WASM!
+    #[cfg(all(target_arch = "wasm32", not(target_feature = "atomics")))]
     {
         let mut tree = MCTSTree::new(pos, color);
         let best_move = tree.search(pos, iterations);
@@ -517,7 +517,8 @@ pub fn search_multithreaded(pos: &Position, color: Color, iterations: u32, num_t
         return (best_move, stats);
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    // Multithreaded mode for native builds and WASM with atomics
+    #[cfg(any(not(target_arch = "wasm32"), target_feature = "atomics"))]
     {
         let num_threads = num_threads.unwrap_or_else(num_cpus::get);
 
