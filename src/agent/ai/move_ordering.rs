@@ -3,7 +3,7 @@
 // Good move ordering is crucial for alpha-beta pruning efficiency.
 // By searching the best moves first, we can prune more branches.
 
-use crate::game_repr::{Move, Position, MoveType, Color};
+use crate::game_repr::{Move, Position};
 use smallvec::SmallVec;
 
 /// Killer move table - stores moves that caused beta cutoffs at each depth
@@ -42,7 +42,8 @@ impl KillerMoves {
         self.table[d][0] == Some(mv) || self.table[d][1] == Some(mv)
     }
 
-    /// Clear all killer moves
+    /// Clear all killer moves (useful for new games)
+    #[allow(dead_code)]
     pub fn clear(&mut self) {
         self.table = [[None; 2]; 64];
     }
@@ -74,7 +75,8 @@ impl HistoryTable {
         self.table[mv._from()][mv._to()]
     }
 
-    /// Clear all history scores
+    /// Clear all history scores (useful for new games)
+    #[allow(dead_code)]
     pub fn clear(&mut self) {
         self.table = [[0; 64]; 64];
     }

@@ -27,7 +27,8 @@ pub const MATE_SCORE: i32 = 30000;
 /// Minimum score (worse than any mate)
 pub const MIN_SCORE: i32 = -MATE_SCORE - 100;
 
-/// Maximum score
+/// Maximum score (used in tests and by external callers)
+#[allow(dead_code)]
 pub const MAX_SCORE: i32 = MATE_SCORE + 100;
 
 /// Null move reduction depth (how much to reduce depth for null move search)
@@ -286,12 +287,14 @@ pub fn negamax(
 }
 
 /// Helper function to detect if a score represents a mate
+#[allow(dead_code)]
 pub fn is_mate_score(score: i32) -> bool {
     score.abs() >= MATE_SCORE - 100
 }
 
 /// Get the number of moves until mate from a mate score
 /// Returns None if not a mate score
+#[allow(dead_code)]
 pub fn mate_distance(score: i32) -> Option<i32> {
     if !is_mate_score(score) {
         return None;

@@ -1,5 +1,7 @@
-// TODO:
-// - Move should be u16 to repr everything that move contains
+// Move representation using compact 16-bit encoding
+//
+// This allows efficient storage and comparison of moves while encoding
+// all necessary information (source, destination, and move type).
 
 /*-------ARCHITECTURE--------*/
 
@@ -70,13 +72,5 @@ impl Move {
 
     pub fn _to(&self) -> usize {
         return ((self.buf >> 4) & 0x3F) as usize;
-    }
-
-
-    fn _from_u8(&self) -> u8 {
-        todo!()
-    }
-    fn _to_u8(&self) -> u8 {
-        todo!()
     }
 }

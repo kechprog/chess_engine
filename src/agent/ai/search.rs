@@ -8,7 +8,6 @@ use crate::game_repr::{Position, Move, Color};
 use super::transposition_table::TranspositionTable;
 use super::negamax::negamax;
 use super::move_ordering::{generate_ordered_moves, KillerMoves, HistoryTable};
-use smallvec::SmallVec;
 use std::time::Instant;
 
 /// Result of a search operation
@@ -180,7 +179,8 @@ pub fn iterative_deepening_search(
 
         // Early exit conditions
         // If we found a mate, no need to search deeper
-        if best_score > 50000 || best_score < -50000 {
+        // MATE_SCORE is 30000, so mate scores are around 29900+
+        if best_score.abs() > 29000 {
             break;
         }
     }
@@ -364,7 +364,8 @@ pub fn iterative_deepening_search_with_aspiration(
         print_search_info(depth, &best_result, &start_time);
 
         // Early exit conditions
-        if best_score > 50000 || best_score < -50000 {
+        // MATE_SCORE is 30000, so mate scores are around 29900+
+        if best_score.abs() > 29000 {
             break;
         }
     }

@@ -18,6 +18,27 @@ use smallvec::SmallVec;
 /// - Provides both read-only queries and mutable state changes
 /// - Caches legal moves when a piece is selected to avoid recomputation
 ///
+/// # Thread Safety and Borrowing
+///
+/// This component is **NOT thread-safe** and should only be accessed from the main thread.
+/// When wrapped in `Arc<RefCell<>>`, be aware that:
+///
+/// - Simultaneous mutable and immutable borrows will **panic** at runtime
+/// - Keep RefCell borrows as short-lived as possible to avoid contention
+/// - Use the pattern: borrow, extract data, drop borrow, then call methods that may borrow again
+///
+/// ```rust,ignore
+/// // CORRECT: Short-lived borrow
+/// let mouse_pos = self.board.borrow().mouse_pos();
+/// // borrow is dropped here
+/// let mut board = self.board.borrow_mut();
+/// board.handle_click(mouse_pos);
+///
+/// // WRONG: Holding borrow while calling methods that borrow
+/// let board = self.board.borrow();
+/// self.board.borrow_mut().execute_move(mv); // PANIC! Already borrowed
+/// ```
+///
 /// # Usage
 ///
 /// ```rust,ignore
@@ -150,6 +171,10 @@ impl Board {
     ///
     /// The piece at the given square, or a None piece if the square is empty.
     ///
+    /// # Panics
+    ///
+    /// Panics if `square` is >= 64 (out of bounds).
+    ///
     /// # Example
     ///
     /// ```rust,ignore
@@ -159,6 +184,7 @@ impl Board {
     /// }
     /// ```
     pub fn piece_at(&self, square: u8) -> Piece {
+        assert!(square < 64, "Square index {} out of bounds (0-63)", square);
         self.position.position[square as usize]
     }
 

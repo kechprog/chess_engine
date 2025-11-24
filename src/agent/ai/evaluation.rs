@@ -27,6 +27,7 @@ pub struct TaperedScore {
 }
 
 impl TaperedScore {
+    #[allow(dead_code)]
     pub fn new(mg: i32, eg: i32) -> Self {
         Self { mg, eg }
     }
@@ -113,6 +114,7 @@ fn calculate_game_phase(pos: &Position) -> i32 {
 }
 
 /// Determine if position is in endgame phase (for backward compatibility)
+#[allow(dead_code)]
 fn is_endgame(pos: &Position) -> bool {
     calculate_game_phase(pos) < 128
 }
@@ -610,6 +612,7 @@ pub fn evaluate(pos: &Position, side_to_move: Color) -> i32 {
 
 /// Quick evaluation for move ordering (just material + PST)
 /// Faster than full evaluation, good enough for ordering moves
+#[allow(dead_code)]
 pub fn quick_evaluate(pos: &Position, side_to_move: Color) -> i32 {
     let is_endgame = is_endgame(pos);
     let score = evaluate_material_and_position(pos, is_endgame);

@@ -15,8 +15,31 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Setup cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Run clippy
+        run: cargo clippy --lib -- -D warnings
+
+      - name: Run tests
+        run: cargo test --lib
+
   build:
     runs-on: ubuntu-latest
+    needs: test
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -32,10 +55,18 @@ jobs:
           cache-on-failure: true
 
       - name: Install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+        run: |
+          curl -L https://github.com/nicholastmosher/wasm-pack/releases/download/v0.13.0/wasm-pack-v0.13.0-x86_64-unknown-linux-musl.tar.gz | tar xz
+          mv wasm-pack-v0.13.0-x86_64-unknown-linux-musl/wasm-pack ~/.cargo/bin/
 
       - name: Build WASM (release mode)
         run: wasm-pack build --target web --release
+
+      - name: Prepare deployment directory
+        run: |
+          mkdir -p deploy
+          cp -r pkg deploy/
+          cp index.html deploy/
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
@@ -43,7 +74,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: '.'
+          path: 'deploy'
 
   deploy:
     environment:

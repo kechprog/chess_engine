@@ -96,8 +96,8 @@ fn vs_main(input: VertexInput) -> VertexOutput {
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let color = textureSample(texture, texture_sampler, input.tex_coords);
-    // Reduce alpha for semi-transparent effect
-    return vec4<f32>(color.rgb, color.a - 0.5);
+    // Reduce alpha for semi-transparent effect (multiply to avoid negative alpha)
+    return vec4<f32>(color.rgb, color.a * 0.5);
 }
 "#;
 

@@ -31,6 +31,7 @@ use crate::renderer::wgpu_renderer::WgpuRenderer;
 use std::cell::RefCell;
 use std::sync::Arc;
 use winit::event::WindowEvent;
+use winit::keyboard::{Key, NamedKey};
 use winit::window::Window;
 
 /// Game mode enumeration representing the current application state.
@@ -306,6 +307,36 @@ impl Orchestrator {
                             Color::Black => player2,
                         };
                         current_player.handle_event(&event);
+                    }
+                }
+            }
+
+            WindowEvent::KeyboardInput { event: ref key_event, .. } => {
+                // Handle Escape key to return to menu
+                if key_event.state == winit::event::ElementState::Pressed {
+                    if let Key::Named(NamedKey::Escape) = &key_event.logical_key {
+                        if self.game_active || self.game_result.is_some() || self.pending_promotion.is_some() {
+                            self.return_to_menu();
+                            return;
+                        } else if self.menu_state == MenuState::SideSelection {
+                            // Go back to mode selection from side selection
+                            self.menu_state = MenuState::ModeSelection;
+                            self.window.request_redraw();
+                            return;
+                        }
+                    }
+                }
+
+                // Delegate other keyboard events to current player when game is active
+                if self.game_active {
+                    if let Some((player1, player2)) = &mut self.players {
+                        let current_player = match self.current_turn {
+                            Color::White => player1,
+                            Color::Black => player2,
+                        };
+                        current_player.handle_event(&event);
+                        self.window.request_redraw();
+                        self.poll_current_player();
                     }
                 }
             }
@@ -777,8 +808,38 @@ impl Orchestrator {
         }
 
         // King and Bishop vs King and Bishop (same colored bishops)
-        // This is more complex - would need to check bishop square colors
-        // Skipping for now as it's rare
+        if white_pieces.len() == 2 && black_pieces.len() == 2 {
+            let white_has_bishop = count_type(&white_pieces, Type::Bishop) == 1;
+            let black_has_bishop = count_type(&black_pieces, Type::Bishop) == 1;
+
+            if white_has_bishop && black_has_bishop {
+                // Find bishop squares to check if they're on same color
+                let mut white_bishop_square = None;
+                let mut black_bishop_square = None;
+
+                for idx in 0..64 {
+                    let piece = board.piece_at(idx);
+                    if piece.piece_type == Type::Bishop {
+                        if piece.color == Color::White {
+                            white_bishop_square = Some(idx);
+                        } else {
+                            black_bishop_square = Some(idx);
+                        }
+                    }
+                }
+
+                // Same color squares = insufficient material
+                // Square color: (rank + file) % 2
+                // idx / 8 = rank, idx % 8 = file
+                if let (Some(w_sq), Some(b_sq)) = (white_bishop_square, black_bishop_square) {
+                    let w_color = (w_sq / 8 + w_sq % 8) % 2;
+                    let b_color = (b_sq / 8 + b_sq % 8) % 2;
+                    if w_color == b_color {
+                        return true;
+                    }
+                }
+            }
+        }
 
         false
     }
