@@ -5,4 +5,4 @@ pub mod human_player;
 pub use human_player::*;
 
 pub mod ai;
-pub use ai::{AIPlayer, Difficulty};
+pub use ai::{Difficulty, NegamaxPlayer, SearchResult, TranspositionTable};

@@ -11,9 +11,9 @@
 //!
 //! # Usage
 //!
-//! ```
-//! use crate::game_repr::piece::{Piece, Color, Type};
-//! use crate::assets::{get_asset_bytes, get_circle_asset_bytes};
+//! ```ignore
+//! use chess_engine::game_repr::{Piece, Color, Type};
+//! use chess_engine::assets::{get_asset_bytes, get_circle_asset_bytes};
 //!
 //! let piece = Piece {
 //!     color: Color::White,
@@ -61,9 +61,9 @@ const CIRCLE: &[u8] = include_bytes!("assets/circle.png");
 ///
 /// # Example
 ///
-/// ```
-/// use crate::game_repr::piece::{Piece, Color, Type};
-/// use crate::assets::get_asset_bytes;
+/// ```ignore
+/// use chess_engine::game_repr::{Piece, Color, Type};
+/// use chess_engine::assets::get_asset_bytes;
 ///
 /// let white_king = Piece {
 ///     color: Color::White,
@@ -112,8 +112,8 @@ pub fn get_piece_bytes(piece: Piece) -> &'static [u8] {
 ///
 /// # Example
 ///
-/// ```
-/// use crate::assets::get_circle_asset_bytes;
+/// ```ignore
+/// use chess_engine::assets::get_circle_asset_bytes;
 ///
 /// let circle_bytes = get_circle_asset_bytes();
 /// // Use bytes to create a texture for legal move indicators

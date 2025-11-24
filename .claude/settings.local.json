@@ -33,7 +33,9 @@
       "Bash(git worktree:*)",
       "Bash(git branch:*)",
       "Bash(git stash drop:*)",
-      "Bash(wasm-pack build:*)"
+      "Bash(wasm-pack build:*)",
+      "Bash(rm:*)",
+      "Bash(mv:*)"
     ],
     "deny": [],
     "ask": []

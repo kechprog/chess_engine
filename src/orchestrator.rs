@@ -24,7 +24,7 @@
 
 use crate::agent::human_player::HumanPlayer;
 use crate::agent::player::{GameResult, Player};
-use crate::agent::AIPlayer;
+use crate::agent::NegamaxPlayer;
 use crate::board::Board;
 use crate::game_repr::{Color, Move};
 use crate::renderer::wgpu_renderer::WgpuRenderer;
@@ -462,8 +462,8 @@ impl Orchestrator {
     /// # Player Creation
     ///
     /// - **PvP**: Creates two `HumanPlayer` instances
-    /// - **PvAI**: Creates `HumanPlayer` and `AIPlayer` (future)
-    /// - **AIvAI**: Creates two `AIPlayer` instances (future)
+    /// - **PvAI**: Creates `HumanPlayer` and `NegamaxPlayer`
+    /// - **AIvAI**: Creates two `NegamaxPlayer` instances (future)
     /// - **Online**: Creates `HumanPlayer` and `NetworkPlayer` (future)
     ///
     /// # State Changes
@@ -499,13 +499,19 @@ impl Orchestrator {
                     Color::White => {
                         // Human plays White, AI plays Black
                         let player1 = Box::new(HumanPlayer::new(self.board.clone(), "You".to_string()));
-                        // AI with 10000 iterations (very strong, ~10 seconds per move), auto-detect threads
-                        let player2 = Box::new(AIPlayer::new(self.board.clone(), 5000, "AI".to_string(), None));
+                        // New Negamax AI with Medium difficulty (depth 4, ~1-2 seconds per move)
+                        let player2 = Box::new(NegamaxPlayer::with_difficulty(
+                            self.board.clone(),
+                            crate::agent::ai::Difficulty::Medium
+                        ));
                         self.players = Some((player1, player2));
                     }
                     Color::Black => {
                         // AI plays White, Human plays Black
-                        let player1 = Box::new(AIPlayer::new(self.board.clone(), 5000, "AI".to_string(), None));
+                        let player1 = Box::new(NegamaxPlayer::with_difficulty(
+                            self.board.clone(),
+                            crate::agent::ai::Difficulty::Medium
+                        ));
                         let player2 = Box::new(HumanPlayer::new(self.board.clone(), "You".to_string()));
                         self.players = Some((player1, player2));
                     }

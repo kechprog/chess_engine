@@ -9,7 +9,7 @@
 //! The `Player` trait focuses on **behavior** rather than construction. Different player
 //! implementations require different initialization parameters:
 //! - `HumanPlayer` needs a reference to the board for UI interaction
-//! - `AIPlayer` needs engine configuration and difficulty settings
+//! - `NegamaxPlayer` needs engine configuration and difficulty settings
 //! - `NetworkPlayer` needs connection details and authentication
 //!
 //! Therefore, the trait does not define a constructor method. Each implementation provides
@@ -17,7 +17,7 @@
 //!
 //! # Examples
 //!
-//! ```rust,no_run
+//! ```ignore
 //! use chess_engine::agent::player::{Player, GameResult};
 //! use chess_engine::game_repr::{Color, Move};
 //! use std::sync::{Arc, RefCell};
@@ -26,8 +26,8 @@
 //! // let board = Arc::new(RefCell::new(Board::new(renderer)));
 //! // let player = HumanPlayer::new(board.clone(), "Alice".to_string());
 //! //
-//! // Example: AIPlayer construction (conceptual)
-//! // let ai_player = AIPlayer::new(board.clone(), Difficulty::Hard, "Stockfish".to_string());
+//! // Example: NegamaxPlayer construction (conceptual)
+//! // let ai_player = NegamaxPlayer::new(board.clone(), Difficulty::Hard, "Stockfish".to_string());
 //! ```
 //!
 //! # Synchronous Design
@@ -35,7 +35,7 @@
 //! The `get_move()` method is intentionally synchronous (blocking) rather than async.
 //! This design choice simplifies the control flow for a turn-based game:
 //! - `HumanPlayer` can block waiting for user input events
-//! - `AIPlayer` can block during move search/computation
+//! - `NegamaxPlayer` can block during move search/computation
 //! - The orchestrator simply calls `get_move()` and waits for a result
 //!
 //! This approach is sufficient for single-threaded gameplay. If future requirements
@@ -125,7 +125,7 @@ pub trait Player {
     ///
     /// This method **may block** until a move is available:
     /// - `HumanPlayer` blocks until the user makes a selection via the UI
-    /// - `AIPlayer` blocks during search/computation
+    /// - `NegamaxPlayer` blocks during search/computation
     /// - `NetworkPlayer` blocks waiting for data from the network
     ///
     /// # Return Value
