@@ -479,11 +479,27 @@ impl WgpuRenderer {
     fn update_board_dimensions(&mut self) {
         let w_to_h = self.window_size.0 as f32 / self.window_size.1 as f32;
 
-        self.board_dimensions = if w_to_h > 1.0 {
-            (2.0 / w_to_h, 2.0)
+        // Reserve space for right panel (20% of width in NDC = 0.4 units)
+        // Board takes 80% of width when window is wider than tall
+        let panel_width_ndc = 0.4_f32;
+        let max_board_width = 2.0 - panel_width_ndc; // 1.6 in NDC
+
+        if w_to_h > 1.0 {
+            // Window is wider than tall
+            // Board should be square and fit within height
+            let board_width = (2.0 / w_to_h).min(max_board_width);
+            self.board_dimensions = (board_width, 2.0);
         } else {
-            (2.0, 2.0 * w_to_h)
-        };
+            // Window is taller than wide - use full width (minus panel) and scale height
+            let board_width = max_board_width.min(2.0);
+            let board_height = board_width * w_to_h;
+            self.board_dimensions = (board_width, board_height.min(2.0));
+        }
+    }
+
+    /// Get the right edge of the board in NDC coordinates (for panel positioning)
+    fn board_right_edge_ndc(&self) -> f32 {
+        -1.0 + self.board_dimensions.0
     }
 
     fn load_texture(&mut self, piece: Piece) -> &(wgpu::Texture, wgpu::TextureView, wgpu::BindGroup) {
@@ -730,9 +746,9 @@ impl Renderer for WgpuRenderer {
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.0,
-                            g: 0.0,
-                            b: 1.0,
+                            r: 0.15,
+                            g: 0.15,
+                            b: 0.18,
                             a: 1.0,
                         }),
                         store: wgpu::StoreOp::Store,
@@ -841,6 +857,179 @@ impl Renderer for WgpuRenderer {
                     render_pass.draw_indexed(0..6, 0, 0..1);
                 }
             }
+
+            // Draw controls bar buttons
+            render_pass.set_pipeline(&self.tile_pipeline);
+            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+
+            // Controls bar at bottom: y from 0.75 to 0.95 in NDC
+            let bar_top = 0.75_f32;
+            let bar_bottom = 0.95_f32;
+            let button_width = 0.15_f32;
+            let button_spacing = 0.05_f32;
+
+            // Undo button (left) - always enabled for now (state handled by orchestrator)
+            let undo_color = [0.4, 0.5, 0.4, 1.0];
+            let undo_left = -0.25_f32;
+            let undo_right = undo_left + button_width;
+
+            let undo_vertices = [
+                TileVertex { position: [undo_left, bar_top], color: undo_color },
+                TileVertex { position: [undo_right, bar_top], color: undo_color },
+                TileVertex { position: [undo_left, bar_bottom], color: undo_color },
+                TileVertex { position: [undo_right, bar_bottom], color: undo_color },
+            ];
+
+            let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Undo Button Vertex Buffer"),
+                contents: bytemuck::cast_slice(&undo_vertices),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
+            render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+            render_pass.draw_indexed(0..6, 0, 0..1);
+
+            // Redo button (center)
+            let redo_color = [0.4, 0.5, 0.4, 1.0];
+            let redo_left = undo_right + button_spacing;
+            let redo_right = redo_left + button_width;
+
+            let redo_vertices = [
+                TileVertex { position: [redo_left, bar_top], color: redo_color },
+                TileVertex { position: [redo_right, bar_top], color: redo_color },
+                TileVertex { position: [redo_left, bar_bottom], color: redo_color },
+                TileVertex { position: [redo_right, bar_bottom], color: redo_color },
+            ];
+
+            let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Redo Button Vertex Buffer"),
+                contents: bytemuck::cast_slice(&redo_vertices),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
+            render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+            render_pass.draw_indexed(0..6, 0, 0..1);
+
+            // Flip button (right)
+            let flip_color = [0.4, 0.4, 0.5, 1.0];
+            let flip_left = redo_right + button_spacing;
+            let flip_right = flip_left + button_width;
+
+            let flip_vertices = [
+                TileVertex { position: [flip_left, bar_top], color: flip_color },
+                TileVertex { position: [flip_right, bar_top], color: flip_color },
+                TileVertex { position: [flip_left, bar_bottom], color: flip_color },
+                TileVertex { position: [flip_right, bar_bottom], color: flip_color },
+            ];
+
+            let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Flip Button Vertex Buffer"),
+                contents: bytemuck::cast_slice(&flip_vertices),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
+            render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+            render_pass.draw_indexed(0..6, 0, 0..1);
+        }
+
+        // Prepare and render control button text labels
+        let viewport_width = self.window_size.0 as f32;
+        let viewport_height = self.window_size.1 as f32;
+
+        self.viewport.update(&self.queue, glyphon::Resolution {
+            width: self.window_size.0,
+            height: self.window_size.1,
+        });
+
+        let mut undo_buffer = Buffer::new(&mut self.font_system, Metrics::new(24.0, 28.0));
+        undo_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+        undo_buffer.set_text(&mut self.font_system, "<", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+
+        let mut redo_buffer = Buffer::new(&mut self.font_system, Metrics::new(24.0, 28.0));
+        redo_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+        redo_buffer.set_text(&mut self.font_system, ">", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+
+        let mut flip_buffer = Buffer::new(&mut self.font_system, Metrics::new(24.0, 28.0));
+        flip_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+        flip_buffer.set_text(&mut self.font_system, "R", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+
+        let bar_center_ndc_y = (0.75 + 0.95) / 2.0;
+        let bar_center_y = (1.0 + bar_center_ndc_y) / 2.0 * viewport_height;
+
+        let undo_center_x = (1.0 + (-0.25 + 0.075)) / 2.0 * viewport_width;
+        let redo_center_x = (1.0 + (-0.05 + 0.075)) / 2.0 * viewport_width;
+        let flip_center_x = (1.0 + (0.15 + 0.075)) / 2.0 * viewport_width;
+
+        let text_areas = [
+            TextArea {
+                buffer: &undo_buffer,
+                left: undo_center_x - 8.0,
+                top: bar_center_y - 12.0,
+                scale: 1.0,
+                bounds: glyphon::TextBounds {
+                    left: 0,
+                    top: 0,
+                    right: viewport_width as i32,
+                    bottom: viewport_height as i32,
+                },
+                default_color: glyphon::Color::rgb(255, 255, 255),
+                custom_glyphs: &[],
+            },
+            TextArea {
+                buffer: &redo_buffer,
+                left: redo_center_x - 8.0,
+                top: bar_center_y - 12.0,
+                scale: 1.0,
+                bounds: glyphon::TextBounds {
+                    left: 0,
+                    top: 0,
+                    right: viewport_width as i32,
+                    bottom: viewport_height as i32,
+                },
+                default_color: glyphon::Color::rgb(255, 255, 255),
+                custom_glyphs: &[],
+            },
+            TextArea {
+                buffer: &flip_buffer,
+                left: flip_center_x - 8.0,
+                top: bar_center_y - 12.0,
+                scale: 1.0,
+                bounds: glyphon::TextBounds {
+                    left: 0,
+                    top: 0,
+                    right: viewport_width as i32,
+                    bottom: viewport_height as i32,
+                },
+                default_color: glyphon::Color::rgb(255, 255, 255),
+                custom_glyphs: &[],
+            },
+        ];
+
+        self.text_renderer.prepare(
+            &self.device,
+            &self.queue,
+            &mut self.font_system,
+            &mut self.text_atlas,
+            &self.viewport,
+            text_areas,
+            &mut self.swash_cache,
+        ).unwrap();
+
+        // Render text
+        {
+            let mut text_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Controls Text Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
+
+            self.text_renderer.render(&self.text_atlas, &self.viewport, &mut text_pass).unwrap();
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
@@ -859,16 +1048,28 @@ impl Renderer for WgpuRenderer {
         #[cfg(not(target_arch = "wasm32"))]
         let (adjusted_x, adjusted_y) = (coords.x, coords.y);
 
-        let (x, y) = (
-            (adjusted_x / self.window_size.0 as f64) * 2.0,
-            (adjusted_y / self.window_size.1 as f64) * 2.0,
-        );
+        // Convert screen coordinates to NDC (-1 to 1)
+        let ndc_x = (adjusted_x / self.window_size.0 as f64) * 2.0 - 1.0;
+        let ndc_y = 1.0 - (adjusted_y / self.window_size.1 as f64) * 2.0;
 
-        let tile_w = self.board_dimensions.0 / 8.0;
-        let tile_h = self.board_dimensions.1 / 8.0;
+        // Board bounds in NDC: x from -1 to -1+board_w, y from 1-board_h to 1
+        let board_left = -1.0;
+        let board_right = -1.0 + self.board_dimensions.0 as f64;
+        let board_top = 1.0;
+        let board_bottom = 1.0 - self.board_dimensions.1 as f64;
 
-        let tile_x = (x / tile_w as f64).floor() as usize;
-        let tile_y = (y / tile_h as f64).floor() as usize;
+        // Check if click is within board bounds
+        if ndc_x < board_left || ndc_x >= board_right || ndc_y > board_top || ndc_y <= board_bottom {
+            return None;
+        }
+
+        // Convert NDC to board-relative coordinates (0 to 1)
+        let board_x = (ndc_x - board_left) / self.board_dimensions.0 as f64;
+        let board_y = (board_top - ndc_y) / self.board_dimensions.1 as f64;
+
+        // Convert to tile indices (0-7)
+        let tile_x = (board_x * 8.0).floor() as usize;
+        let tile_y = (board_y * 8.0).floor() as usize;
 
         if tile_x > 7 || tile_y > 7 {
             return None;
@@ -946,13 +1147,13 @@ impl Renderer for WgpuRenderer {
                 render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
                 render_pass.draw_indexed(0..6, 0, 0..1);
             } else {
-                // Draw two buttons: PvP and PvAI
+                // Draw three buttons: PvP, PvAI, AIvAI
                 // PvP button (top) - greenish
                 let pvp_vertices = [
-                    TileVertex { position: [-0.5, 0.3], color: [0.5, 0.7, 0.5, 1.0] },
-                    TileVertex { position: [0.5, 0.3], color: [0.5, 0.7, 0.5, 1.0] },
-                    TileVertex { position: [-0.5, 0.1], color: [0.5, 0.7, 0.5, 1.0] },
-                    TileVertex { position: [0.5, 0.1], color: [0.5, 0.7, 0.5, 1.0] },
+                    TileVertex { position: [-0.5, 0.45], color: [0.5, 0.7, 0.5, 1.0] },
+                    TileVertex { position: [0.5, 0.45], color: [0.5, 0.7, 0.5, 1.0] },
+                    TileVertex { position: [-0.5, 0.25], color: [0.5, 0.7, 0.5, 1.0] },
+                    TileVertex { position: [0.5, 0.25], color: [0.5, 0.7, 0.5, 1.0] },
                 ];
 
                 let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -964,17 +1165,34 @@ impl Renderer for WgpuRenderer {
                 render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
                 render_pass.draw_indexed(0..6, 0, 0..1);
 
-                // PvAI button (bottom) - blueish
+                // PvAI button (middle) - blueish
                 let pvai_vertices = [
+                    TileVertex { position: [-0.5, 0.1], color: [0.5, 0.6, 0.8, 1.0] },
+                    TileVertex { position: [0.5, 0.1], color: [0.5, 0.6, 0.8, 1.0] },
                     TileVertex { position: [-0.5, -0.1], color: [0.5, 0.6, 0.8, 1.0] },
                     TileVertex { position: [0.5, -0.1], color: [0.5, 0.6, 0.8, 1.0] },
-                    TileVertex { position: [-0.5, -0.3], color: [0.5, 0.6, 0.8, 1.0] },
-                    TileVertex { position: [0.5, -0.3], color: [0.5, 0.6, 0.8, 1.0] },
                 ];
 
                 let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("PvAI Button Vertex Buffer"),
                     contents: bytemuck::cast_slice(&pvai_vertices),
+                    usage: wgpu::BufferUsages::VERTEX,
+                });
+
+                render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+                render_pass.draw_indexed(0..6, 0, 0..1);
+
+                // AIvAI button (bottom) - purplish
+                let aivai_vertices = [
+                    TileVertex { position: [-0.5, -0.25], color: [0.6, 0.5, 0.7, 1.0] },
+                    TileVertex { position: [0.5, -0.25], color: [0.6, 0.5, 0.7, 1.0] },
+                    TileVertex { position: [-0.5, -0.45], color: [0.6, 0.5, 0.7, 1.0] },
+                    TileVertex { position: [0.5, -0.45], color: [0.6, 0.5, 0.7, 1.0] },
+                ];
+
+                let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("AIvAI Button Vertex Buffer"),
+                    contents: bytemuck::cast_slice(&aivai_vertices),
                     usage: wgpu::BufferUsages::VERTEX,
                 });
 
@@ -1046,12 +1264,9 @@ impl Renderer for WgpuRenderer {
             pvp_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
             pvp_buffer.set_text(&mut self.font_system, "Player vs Player", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
 
-            // PvP button is at [-0.5, 0.3] to [0.5, 0.1] in NDC
-            // Convert to pixel coordinates
-            // NDC Y=0.2 (center of button at (0.3+0.1)/2) -> Screen Y
-            // NDC goes from -1 (bottom) to +1 (top), Screen goes from 0 (top) to height (bottom)
+            // PvP button is at [-0.5, 0.45] to [0.5, 0.25] in NDC
             // NDC to Screen: screen_y = (1 - ndc_y) / 2 * height
-            let pvp_ndc_center_y = (0.3 + 0.1) / 2.0; // 0.2
+            let pvp_ndc_center_y = (0.45 + 0.25) / 2.0; // 0.35
             let pvp_center_y = (1.0 - pvp_ndc_center_y) / 2.0 * viewport_height;
 
             let layout = pvp_buffer.layout_runs();
@@ -1061,15 +1276,15 @@ impl Renderer for WgpuRenderer {
             }
 
             let pvp_text_x = (viewport_width / 2.0 - text_width / 2.0).max(0.0);
-            let pvp_text_y = (pvp_center_y - 16.0).max(0.0); // Adjust for font size
+            let pvp_text_y = (pvp_center_y - 16.0).max(0.0);
 
             // "Player vs AI" text - centered on blue button
             let mut pvai_buffer = Buffer::new(&mut self.font_system, Metrics::new(32.0, 40.0));
             pvai_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
             pvai_buffer.set_text(&mut self.font_system, "Player vs AI", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
 
-            // PvAI button is at [-0.5, -0.1] to [0.5, -0.3] in NDC
-            let pvai_ndc_center_y = (-0.1 + -0.3) / 2.0; // -0.2
+            // PvAI button is at [-0.5, 0.1] to [0.5, -0.1] in NDC
+            let pvai_ndc_center_y = (0.1 + -0.1) / 2.0; // 0.0
             let pvai_center_y = (1.0 - pvai_ndc_center_y) / 2.0 * viewport_height;
 
             let layout2 = pvai_buffer.layout_runs();
@@ -1079,7 +1294,25 @@ impl Renderer for WgpuRenderer {
             }
 
             let pvai_text_x = (viewport_width / 2.0 - text_width2 / 2.0).max(0.0);
-            let pvai_text_y = (pvai_center_y - 16.0).max(0.0); // Adjust for font size
+            let pvai_text_y = (pvai_center_y - 16.0).max(0.0);
+
+            // "AI vs AI" text - centered on purple button
+            let mut aivai_buffer = Buffer::new(&mut self.font_system, Metrics::new(32.0, 40.0));
+            aivai_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+            aivai_buffer.set_text(&mut self.font_system, "AI vs AI", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+
+            // AIvAI button is at [-0.5, -0.25] to [0.5, -0.45] in NDC
+            let aivai_ndc_center_y = (-0.25 + -0.45) / 2.0; // -0.35
+            let aivai_center_y = (1.0 - aivai_ndc_center_y) / 2.0 * viewport_height;
+
+            let layout3 = aivai_buffer.layout_runs();
+            let mut text_width3: f32 = 0.0;
+            for run in layout3 {
+                text_width3 = text_width3.max(run.line_w);
+            }
+
+            let aivai_text_x = (viewport_width / 2.0 - text_width3 / 2.0).max(0.0);
+            let aivai_text_y = (aivai_center_y - 16.0).max(0.0);
 
             let text_areas = [
                 TextArea {
@@ -1100,6 +1333,20 @@ impl Renderer for WgpuRenderer {
                     buffer: &pvai_buffer,
                     left: pvai_text_x,
                     top: pvai_text_y,
+                    scale: 1.0,
+                    bounds: glyphon::TextBounds {
+                        left: 0,
+                        top: 0,
+                        right: viewport_width as i32,
+                        bottom: viewport_height as i32,
+                    },
+                    default_color: glyphon::Color::rgb(0, 0, 0),
+                    custom_glyphs: &[],
+                },
+                TextArea {
+                    buffer: &aivai_buffer,
+                    left: aivai_text_x,
+                    top: aivai_text_y,
                     scale: 1.0,
                     bounds: glyphon::TextBounds {
                         left: 0,
@@ -1163,12 +1410,16 @@ impl Renderer for WgpuRenderer {
 
         match button_index {
             0 => {
-                // PvP button (top): x in [-0.5, 0.5], y in [-0.3, -0.1] (in NDC, -Y is down)
-                norm_x >= -0.5 && norm_x <= 0.5 && norm_y >= -0.3 && norm_y <= -0.1
+                // PvP button (top): NDC y [0.45, 0.25] -> screen norm_y in [-0.45, -0.25]
+                norm_x >= -0.5 && norm_x <= 0.5 && norm_y >= -0.45 && norm_y <= -0.25
             }
             1 => {
-                // PvAI button (bottom): x in [-0.5, 0.5], y in [0.1, 0.3]
-                norm_x >= -0.5 && norm_x <= 0.5 && norm_y >= 0.1 && norm_y <= 0.3
+                // PvAI button (middle): NDC y [0.1, -0.1] -> screen norm_y in [-0.1, 0.1]
+                norm_x >= -0.5 && norm_x <= 0.5 && norm_y >= -0.1 && norm_y <= 0.1
+            }
+            2 => {
+                // AIvAI button (bottom): NDC y [-0.25, -0.45] -> screen norm_y in [0.25, 0.45]
+                norm_x >= -0.5 && norm_x <= 0.5 && norm_y >= 0.25 && norm_y <= 0.45
             }
             _ => false,
         }
@@ -1679,8 +1930,6 @@ impl Renderer for WgpuRenderer {
         output.present();
     }
 
-    // TODO: Add is_coord_in_side_button to Renderer trait
-    #[allow(dead_code)]
     fn is_coord_in_side_button(&self, coords: PhysicalPosition<f64>, button_index: usize) -> bool {
         // Convert physical coordinates to normalized device coordinates (-1 to 1)
         #[cfg(target_arch = "wasm32")]
@@ -1706,5 +1955,651 @@ impl Renderer for WgpuRenderer {
             }
             _ => false,
         }
+    }
+
+    // ===========================
+    // Game Controls Panel (Right Side)
+    // ===========================
+
+    fn draw_controls_bar(&mut self, can_undo: bool, can_redo: bool) {
+        // Controls panel on the right side of the board
+        // Two buttons stacked vertically: [Prev] and [Next]
+
+        let output = self.surface.get_current_texture().unwrap();
+        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Controls Panel Render Encoder"),
+        });
+
+        // Calculate panel position based on board dimensions
+        let board_right = self.board_right_edge_ndc();
+        let panel_left = board_right + 0.05; // Small gap from board
+        let panel_right = 0.95_f32; // Near right edge
+
+        // Button dimensions in NDC
+        let button_height = 0.15_f32;
+        let button_spacing = 0.1_f32;
+
+        // Prev button (top) - corresponds to Undo
+        let prev_top = -0.1_f32;
+        let prev_bottom = prev_top + button_height;
+
+        // Next button (bottom) - corresponds to Redo
+        let next_top = prev_bottom + button_spacing;
+        let next_bottom = next_top + button_height;
+
+        // Draw button backgrounds
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Controls Panel Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load, // Load existing content (board)
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
+
+            render_pass.set_pipeline(&self.tile_pipeline);
+            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+
+            // Prev button
+            let prev_color = if can_undo { [0.35, 0.45, 0.35, 1.0] } else { [0.25, 0.25, 0.25, 0.7] };
+            let prev_vertices = [
+                TileVertex { position: [panel_left, prev_top], color: prev_color },
+                TileVertex { position: [panel_right, prev_top], color: prev_color },
+                TileVertex { position: [panel_left, prev_bottom], color: prev_color },
+                TileVertex { position: [panel_right, prev_bottom], color: prev_color },
+            ];
+
+            let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Prev Button Vertex Buffer"),
+                contents: bytemuck::cast_slice(&prev_vertices),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
+            render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+            render_pass.draw_indexed(0..6, 0, 0..1);
+
+            // Next button
+            let next_color = if can_redo { [0.35, 0.45, 0.35, 1.0] } else { [0.25, 0.25, 0.25, 0.7] };
+            let next_vertices = [
+                TileVertex { position: [panel_left, next_top], color: next_color },
+                TileVertex { position: [panel_right, next_top], color: next_color },
+                TileVertex { position: [panel_left, next_bottom], color: next_color },
+                TileVertex { position: [panel_right, next_bottom], color: next_color },
+            ];
+
+            let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Next Button Vertex Buffer"),
+                contents: bytemuck::cast_slice(&next_vertices),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
+            render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+            render_pass.draw_indexed(0..6, 0, 0..1);
+        }
+
+        // Render text labels
+        let viewport_width = self.window_size.0 as f32;
+        let viewport_height = self.window_size.1 as f32;
+
+        self.viewport.update(&self.queue, glyphon::Resolution {
+            width: self.window_size.0,
+            height: self.window_size.1,
+        });
+
+        // Create text buffers for button labels
+        let mut prev_buffer = Buffer::new(&mut self.font_system, Metrics::new(20.0, 24.0));
+        prev_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+        prev_buffer.set_text(&mut self.font_system, "Prev", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+        let prev_text_width: f32 = prev_buffer.layout_runs().map(|r| r.line_w).sum();
+
+        let mut next_buffer = Buffer::new(&mut self.font_system, Metrics::new(20.0, 24.0));
+        next_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+        next_buffer.set_text(&mut self.font_system, "Next", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+        let next_text_width: f32 = next_buffer.layout_runs().map(|r| r.line_w).sum();
+
+        // Calculate button centers in screen coordinates
+        let button_center_x_ndc = (panel_left + panel_right) / 2.0;
+        let button_center_x = (1.0 + button_center_x_ndc) / 2.0 * viewport_width;
+
+        let prev_center_y_ndc = (prev_top + prev_bottom) / 2.0;
+        let prev_center_y = (1.0 - prev_center_y_ndc) / 2.0 * viewport_height;
+
+        let next_center_y_ndc = (next_top + next_bottom) / 2.0;
+        let next_center_y = (1.0 - next_center_y_ndc) / 2.0 * viewport_height;
+
+        let text_areas = [
+            TextArea {
+                buffer: &prev_buffer,
+                left: button_center_x - prev_text_width / 2.0,
+                top: prev_center_y - 10.0,
+                scale: 1.0,
+                bounds: glyphon::TextBounds {
+                    left: 0,
+                    top: 0,
+                    right: viewport_width as i32,
+                    bottom: viewport_height as i32,
+                },
+                default_color: glyphon::Color::rgb(255, 255, 255),
+                custom_glyphs: &[],
+            },
+            TextArea {
+                buffer: &next_buffer,
+                left: button_center_x - next_text_width / 2.0,
+                top: next_center_y - 10.0,
+                scale: 1.0,
+                bounds: glyphon::TextBounds {
+                    left: 0,
+                    top: 0,
+                    right: viewport_width as i32,
+                    bottom: viewport_height as i32,
+                },
+                default_color: glyphon::Color::rgb(255, 255, 255),
+                custom_glyphs: &[],
+            },
+        ];
+
+        self.text_renderer.prepare(
+            &self.device,
+            &self.queue,
+            &mut self.font_system,
+            &mut self.text_atlas,
+            &self.viewport,
+            text_areas,
+            &mut self.swash_cache,
+        ).unwrap();
+
+        // Render text
+        {
+            let mut text_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Controls Text Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
+
+            self.text_renderer.render(&self.text_atlas, &self.viewport, &mut text_pass).unwrap();
+        }
+
+        self.queue.submit(std::iter::once(encoder.finish()));
+        output.present();
+    }
+
+    fn get_control_action_at_coords(&self, coords: PhysicalPosition<f64>) -> Option<super::ControlAction> {
+        // Convert physical coordinates to normalized device coordinates (-1 to 1)
+        #[cfg(target_arch = "wasm32")]
+        let (adjusted_x, adjusted_y) = {
+            let scale_factor = self.window.scale_factor();
+            (coords.x / scale_factor, coords.y / scale_factor)
+        };
+
+        #[cfg(not(target_arch = "wasm32"))]
+        let (adjusted_x, adjusted_y) = (coords.x, coords.y);
+
+        let norm_x = (adjusted_x / self.window_size.0 as f64) * 2.0 - 1.0;
+        let norm_y = (adjusted_y / self.window_size.1 as f64) * 2.0 - 1.0;
+
+        // Panel position (must match draw_controls_bar)
+        let board_right = self.board_right_edge_ndc() as f64;
+        let panel_left = board_right + 0.05;
+        let panel_right = 0.95_f64;
+
+        // Button dimensions
+        let button_height = 0.15_f64;
+        let button_spacing = 0.1_f64;
+
+        // Prev button bounds
+        let prev_top = -0.1_f64;
+        let prev_bottom = prev_top + button_height;
+
+        // Next button bounds
+        let next_top = prev_bottom + button_spacing;
+        let next_bottom = next_top + button_height;
+
+        // Check X range (must be in panel)
+        if norm_x < panel_left || norm_x > panel_right {
+            return None;
+        }
+
+        // Check which button (Y is inverted in NDC)
+        if norm_y >= prev_top && norm_y <= prev_bottom {
+            Some(super::ControlAction::Undo)
+        } else if norm_y >= next_top && norm_y <= next_bottom {
+            Some(super::ControlAction::Redo)
+        } else {
+            None
+        }
+    }
+
+    // ===========================
+    // AI Setup Screen (Combined)
+    // ===========================
+
+    fn draw_ai_setup(
+        &mut self,
+        _ai_types: &[crate::agent::ai::AIType],
+        _white_type_index: usize,
+        white_difficulty: crate::agent::ai::Difficulty,
+        _black_type_index: usize,
+        black_difficulty: crate::agent::ai::Difficulty,
+    ) {
+        let output = self.surface.get_current_texture().unwrap();
+        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("AI Setup Render Encoder"),
+        });
+
+        // Layout constants - combined screen with White and Black sections
+        let diff_button_width = 0.18_f32;
+        let diff_button_height = 0.12_f32;
+        let diff_start_x = -0.45_f32;
+        let diff_spacing = 0.05_f32;
+
+        // White section: y from 0.15 to 0.55
+        let white_diff_y_top = 0.15_f32;
+        let white_diff_y_bottom = white_diff_y_top + diff_button_height;
+
+        // Black section: y from -0.35 to 0.05
+        let black_diff_y_top = -0.35_f32;
+        let black_diff_y_bottom = black_diff_y_top + diff_button_height;
+
+        // Clear background and draw buttons
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("AI Setup Background Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.15,
+                            g: 0.15,
+                            b: 0.18,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
+
+            render_pass.set_pipeline(&self.tile_pipeline);
+            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+
+            // Draw White difficulty buttons
+            for i in 0..4 {
+                let is_selected = match white_difficulty {
+                    crate::agent::ai::Difficulty::Easy => i == 0,
+                    crate::agent::ai::Difficulty::Medium => i == 1,
+                    crate::agent::ai::Difficulty::Hard => i == 2,
+                    crate::agent::ai::Difficulty::Expert => i == 3,
+                };
+
+                let color = if is_selected {
+                    [0.5, 0.7, 0.5, 1.0] // Highlighted green
+                } else {
+                    [0.35, 0.4, 0.35, 1.0] // Normal
+                };
+
+                let left = diff_start_x + (i as f32) * (diff_button_width + diff_spacing);
+                let right = left + diff_button_width;
+
+                let vertices = [
+                    TileVertex { position: [left, white_diff_y_top], color },
+                    TileVertex { position: [right, white_diff_y_top], color },
+                    TileVertex { position: [left, white_diff_y_bottom], color },
+                    TileVertex { position: [right, white_diff_y_bottom], color },
+                ];
+
+                let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("White Difficulty Button"),
+                    contents: bytemuck::cast_slice(&vertices),
+                    usage: wgpu::BufferUsages::VERTEX,
+                });
+                render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+                render_pass.draw_indexed(0..6, 0, 0..1);
+            }
+
+            // Draw Black difficulty buttons
+            for i in 0..4 {
+                let is_selected = match black_difficulty {
+                    crate::agent::ai::Difficulty::Easy => i == 0,
+                    crate::agent::ai::Difficulty::Medium => i == 1,
+                    crate::agent::ai::Difficulty::Hard => i == 2,
+                    crate::agent::ai::Difficulty::Expert => i == 3,
+                };
+
+                let color = if is_selected {
+                    [0.5, 0.5, 0.7, 1.0] // Highlighted blue
+                } else {
+                    [0.35, 0.35, 0.4, 1.0] // Normal
+                };
+
+                let left = diff_start_x + (i as f32) * (diff_button_width + diff_spacing);
+                let right = left + diff_button_width;
+
+                let vertices = [
+                    TileVertex { position: [left, black_diff_y_top], color },
+                    TileVertex { position: [right, black_diff_y_top], color },
+                    TileVertex { position: [left, black_diff_y_bottom], color },
+                    TileVertex { position: [right, black_diff_y_bottom], color },
+                ];
+
+                let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Black Difficulty Button"),
+                    contents: bytemuck::cast_slice(&vertices),
+                    usage: wgpu::BufferUsages::VERTEX,
+                });
+                render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+                render_pass.draw_indexed(0..6, 0, 0..1);
+            }
+
+            // Draw Start button at bottom
+            let start_color = [0.4, 0.55, 0.4, 1.0];
+            let start_vertices = [
+                TileVertex { position: [-0.3, -0.6], color: start_color },
+                TileVertex { position: [0.3, -0.6], color: start_color },
+                TileVertex { position: [-0.3, -0.75], color: start_color },
+                TileVertex { position: [0.3, -0.75], color: start_color },
+            ];
+
+            let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Start Button"),
+                contents: bytemuck::cast_slice(&start_vertices),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
+            render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+            render_pass.draw_indexed(0..6, 0, 0..1);
+        }
+
+        // Render text
+        let viewport_width = self.window_size.0 as f32;
+        let viewport_height = self.window_size.1 as f32;
+
+        self.viewport.update(&self.queue, glyphon::Resolution {
+            width: self.window_size.0,
+            height: self.window_size.1,
+        });
+
+        // Title
+        let mut title_buffer = Buffer::new(&mut self.font_system, Metrics::new(32.0, 40.0));
+        title_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+        title_buffer.set_text(&mut self.font_system, "AI vs AI Setup", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+
+        // Get title width for centering
+        let title_width: f32 = title_buffer.layout_runs().map(|r| r.line_w).sum();
+        let title_x = (viewport_width - title_width) / 2.0;
+
+        // White AI label
+        let mut white_label = Buffer::new(&mut self.font_system, Metrics::new(24.0, 30.0));
+        white_label.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+        white_label.set_text(&mut self.font_system, "White AI", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+        let white_label_width: f32 = white_label.layout_runs().map(|r| r.line_w).sum();
+        let white_label_x = (viewport_width - white_label_width) / 2.0;
+
+        // Black AI label
+        let mut black_label = Buffer::new(&mut self.font_system, Metrics::new(24.0, 30.0));
+        black_label.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+        black_label.set_text(&mut self.font_system, "Black AI", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+        let black_label_width: f32 = black_label.layout_runs().map(|r| r.line_w).sum();
+        let black_label_x = (viewport_width - black_label_width) / 2.0;
+
+        // Difficulty labels
+        let difficulties = ["Easy", "Medium", "Hard", "Expert"];
+        let diff_buffers: Vec<Buffer> = difficulties.iter().map(|text| {
+            let mut buffer = Buffer::new(&mut self.font_system, Metrics::new(16.0, 20.0));
+            buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+            buffer.set_text(&mut self.font_system, text, Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+            buffer
+        }).collect();
+
+        // Start button text
+        let mut start_buffer = Buffer::new(&mut self.font_system, Metrics::new(24.0, 30.0));
+        start_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+        start_buffer.set_text(&mut self.font_system, "Start Game", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+        let start_width: f32 = start_buffer.layout_runs().map(|r| r.line_w).sum();
+        let start_x = (viewport_width - start_width) / 2.0;
+
+        // Calculate Y positions (NDC to screen)
+        let title_y = (1.0 - 0.7) / 2.0 * viewport_height;
+        let white_label_y = (1.0 - 0.45) / 2.0 * viewport_height;
+        let white_diff_center_y = (1.0 - (white_diff_y_top + white_diff_y_bottom) / 2.0) / 2.0 * viewport_height;
+        let black_label_y = (1.0 - (-0.05)) / 2.0 * viewport_height;
+        let black_diff_center_y = (1.0 - (black_diff_y_top + black_diff_y_bottom) / 2.0) / 2.0 * viewport_height;
+        let start_y = (1.0 - (-0.675)) / 2.0 * viewport_height;
+
+        let mut text_areas = vec![
+            TextArea {
+                buffer: &title_buffer,
+                left: title_x,
+                top: title_y,
+                scale: 1.0,
+                bounds: glyphon::TextBounds {
+                    left: 0,
+                    top: 0,
+                    right: viewport_width as i32,
+                    bottom: viewport_height as i32,
+                },
+                default_color: glyphon::Color::rgb(255, 255, 255),
+                custom_glyphs: &[],
+            },
+            TextArea {
+                buffer: &white_label,
+                left: white_label_x,
+                top: white_label_y,
+                scale: 1.0,
+                bounds: glyphon::TextBounds {
+                    left: 0,
+                    top: 0,
+                    right: viewport_width as i32,
+                    bottom: viewport_height as i32,
+                },
+                default_color: glyphon::Color::rgb(220, 220, 220),
+                custom_glyphs: &[],
+            },
+            TextArea {
+                buffer: &black_label,
+                left: black_label_x,
+                top: black_label_y,
+                scale: 1.0,
+                bounds: glyphon::TextBounds {
+                    left: 0,
+                    top: 0,
+                    right: viewport_width as i32,
+                    bottom: viewport_height as i32,
+                },
+                default_color: glyphon::Color::rgb(180, 180, 220),
+                custom_glyphs: &[],
+            },
+            TextArea {
+                buffer: &start_buffer,
+                left: start_x,
+                top: start_y - 12.0,
+                scale: 1.0,
+                bounds: glyphon::TextBounds {
+                    left: 0,
+                    top: 0,
+                    right: viewport_width as i32,
+                    bottom: viewport_height as i32,
+                },
+                default_color: glyphon::Color::rgb(255, 255, 255),
+                custom_glyphs: &[],
+            },
+        ];
+
+        // Add White difficulty button text areas (centered)
+        for (i, buffer) in diff_buffers.iter().enumerate() {
+            let left = diff_start_x + (i as f32) * (diff_button_width + diff_spacing);
+            let button_center_x = (1.0 + (left + diff_button_width / 2.0)) / 2.0 * viewport_width;
+            let text_width: f32 = buffer.layout_runs().map(|r| r.line_w).sum();
+            text_areas.push(TextArea {
+                buffer,
+                left: button_center_x - text_width / 2.0,
+                top: white_diff_center_y - 10.0,
+                scale: 1.0,
+                bounds: glyphon::TextBounds {
+                    left: 0,
+                    top: 0,
+                    right: viewport_width as i32,
+                    bottom: viewport_height as i32,
+                },
+                default_color: glyphon::Color::rgb(255, 255, 255),
+                custom_glyphs: &[],
+            });
+        }
+
+        // Add Black difficulty button text areas (centered)
+        for (i, buffer) in diff_buffers.iter().enumerate() {
+            let left = diff_start_x + (i as f32) * (diff_button_width + diff_spacing);
+            let button_center_x = (1.0 + (left + diff_button_width / 2.0)) / 2.0 * viewport_width;
+            let text_width: f32 = buffer.layout_runs().map(|r| r.line_w).sum();
+            text_areas.push(TextArea {
+                buffer,
+                left: button_center_x - text_width / 2.0,
+                top: black_diff_center_y - 10.0,
+                scale: 1.0,
+                bounds: glyphon::TextBounds {
+                    left: 0,
+                    top: 0,
+                    right: viewport_width as i32,
+                    bottom: viewport_height as i32,
+                },
+                default_color: glyphon::Color::rgb(255, 255, 255),
+                custom_glyphs: &[],
+            });
+        }
+
+        self.text_renderer.prepare(
+            &self.device,
+            &self.queue,
+            &mut self.font_system,
+            &mut self.text_atlas,
+            &self.viewport,
+            text_areas,
+            &mut self.swash_cache,
+        ).unwrap();
+
+        // Render text pass
+        {
+            let mut text_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("AI Setup Text Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
+
+            self.text_renderer.render(&self.text_atlas, &self.viewport, &mut text_pass).unwrap();
+        }
+
+        self.queue.submit(std::iter::once(encoder.finish()));
+        output.present();
+    }
+
+    fn get_white_difficulty_at_coords(&self, coords: PhysicalPosition<f64>) -> Option<usize> {
+        #[cfg(target_arch = "wasm32")]
+        let (adjusted_x, adjusted_y) = {
+            let scale_factor = self.window.scale_factor();
+            (coords.x / scale_factor, coords.y / scale_factor)
+        };
+
+        #[cfg(not(target_arch = "wasm32"))]
+        let (adjusted_x, adjusted_y) = (coords.x, coords.y);
+
+        let norm_x = (adjusted_x / self.window_size.0 as f64) * 2.0 - 1.0;
+        let norm_y = (adjusted_y / self.window_size.1 as f64) * 2.0 - 1.0;
+
+        // White difficulty buttons: y in [0.15, 0.27] (NDC), screen y in [-0.27, -0.15]
+        if norm_y < -0.27 || norm_y > -0.15 {
+            return None;
+        }
+
+        let diff_button_width = 0.18_f64;
+        let diff_start_x = -0.45_f64;
+        let diff_spacing = 0.05_f64;
+
+        for i in 0..4 {
+            let left = diff_start_x + (i as f64) * (diff_button_width + diff_spacing);
+            let right = left + diff_button_width;
+            if norm_x >= left && norm_x <= right {
+                return Some(i);
+            }
+        }
+
+        None
+    }
+
+    fn get_black_difficulty_at_coords(&self, coords: PhysicalPosition<f64>) -> Option<usize> {
+        #[cfg(target_arch = "wasm32")]
+        let (adjusted_x, adjusted_y) = {
+            let scale_factor = self.window.scale_factor();
+            (coords.x / scale_factor, coords.y / scale_factor)
+        };
+
+        #[cfg(not(target_arch = "wasm32"))]
+        let (adjusted_x, adjusted_y) = (coords.x, coords.y);
+
+        let norm_x = (adjusted_x / self.window_size.0 as f64) * 2.0 - 1.0;
+        let norm_y = (adjusted_y / self.window_size.1 as f64) * 2.0 - 1.0;
+
+        // Black difficulty buttons: y in [-0.35, -0.23] (NDC), screen y in [0.23, 0.35]
+        if norm_y < 0.23 || norm_y > 0.35 {
+            return None;
+        }
+
+        let diff_button_width = 0.18_f64;
+        let diff_start_x = -0.45_f64;
+        let diff_spacing = 0.05_f64;
+
+        for i in 0..4 {
+            let left = diff_start_x + (i as f64) * (diff_button_width + diff_spacing);
+            let right = left + diff_button_width;
+            if norm_x >= left && norm_x <= right {
+                return Some(i);
+            }
+        }
+
+        None
+    }
+
+    fn is_coord_in_start_button(&self, coords: PhysicalPosition<f64>) -> bool {
+        #[cfg(target_arch = "wasm32")]
+        let (adjusted_x, adjusted_y) = {
+            let scale_factor = self.window.scale_factor();
+            (coords.x / scale_factor, coords.y / scale_factor)
+        };
+
+        #[cfg(not(target_arch = "wasm32"))]
+        let (adjusted_x, adjusted_y) = (coords.x, coords.y);
+
+        let norm_x = (adjusted_x / self.window_size.0 as f64) * 2.0 - 1.0;
+        let norm_y = (adjusted_y / self.window_size.1 as f64) * 2.0 - 1.0;
+
+        // Start button: x in [-0.3, 0.3], y in [-0.75, -0.6] (NDC), screen y in [0.6, 0.75]
+        norm_x >= -0.3 && norm_x <= 0.3 && norm_y >= 0.6 && norm_y <= 0.75
     }
 }

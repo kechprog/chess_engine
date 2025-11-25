@@ -1,5 +1,5 @@
 use crate::agent::player::GameResult;
-use crate::game_repr::{Color, Move, Piece, Position};
+use crate::game_repr::{Color, Move, Piece, Position, UndoInfo};
 use crate::renderer::Renderer;
 use winit::dpi::PhysicalPosition;
 use smallvec::SmallVec;
@@ -85,6 +85,15 @@ pub struct Board {
 
     /// Last known mouse position (for event handling)
     mouse_pos: PhysicalPosition<f64>,
+
+    /// Move history for undo/redo functionality
+    /// Each entry contains the move and the information needed to undo it
+    move_history: Vec<(Move, UndoInfo)>,
+
+    /// Current position in move history (for redo support)
+    /// When at the end of history, this equals move_history.len()
+    /// After undo, this can be less than move_history.len()
+    history_index: usize,
 }
 
 impl Board {
@@ -112,6 +121,8 @@ impl Board {
             legal_moves_cache: SmallVec::new(),
             pov: Color::White,
             mouse_pos: PhysicalPosition::new(0.0, 0.0),
+            move_history: Vec::new(),
+            history_index: 0,
         }
     }
 
@@ -142,6 +153,8 @@ impl Board {
             legal_moves_cache: SmallVec::new(),
             pov: Color::White,
             mouse_pos: PhysicalPosition::new(0.0, 0.0),
+            move_history: Vec::new(),
+            history_index: 0,
         }
     }
 
@@ -159,6 +172,30 @@ impl Board {
     /// A reference to the current Position.
     pub fn position(&self) -> &Position {
         &self.position
+    }
+
+    /// Get a mutable reference to the renderer.
+    ///
+    /// This provides direct access to the renderer for drawing operations that
+    /// don't need to go through Board's abstraction layer.
+    ///
+    /// # Returns
+    ///
+    /// A mutable reference to the renderer.
+    pub fn renderer_mut(&mut self) -> &mut dyn Renderer {
+        &mut *self.renderer
+    }
+
+    /// Get an immutable reference to the renderer.
+    ///
+    /// This provides read-only access to the renderer for coordinate conversion
+    /// and hit-testing operations.
+    ///
+    /// # Returns
+    ///
+    /// An immutable reference to the renderer.
+    pub fn renderer(&self) -> &dyn Renderer {
+        &*self.renderer
     }
 
     /// Get the piece at a specific square.
@@ -267,6 +304,175 @@ impl Board {
         self.legal_moves_cache.clear();
     }
 
+    /// Execute a move and store it in history for undo/redo support.
+    ///
+    /// This is the preferred method for move execution when history tracking is needed.
+    /// It truncates any redo history (moves after the current position) before adding
+    /// the new move.
+    ///
+    /// # Arguments
+    ///
+    /// * `mv` - The move to execute
+    ///
+    /// # Returns
+    ///
+    /// `true` if the move was executed successfully, `false` if it was illegal.
+    ///
+    /// # Side Effects
+    ///
+    /// - Updates the position
+    /// - Stores the move in history
+    /// - Truncates any redo history
+    /// - Clears selection state
+    pub fn execute_move_undoable(&mut self, mv: Move) -> bool {
+        if !self.is_legal_move(mv) {
+            return false;
+        }
+
+        // Truncate any redo history (moves after current position)
+        self.move_history.truncate(self.history_index);
+
+        // Execute move and store undo info
+        let undo_info = self.position.make_move_undoable(mv);
+        self.move_history.push((mv, undo_info));
+        self.history_index += 1;
+
+        // Clear selection state
+        self.selected_tile = None;
+        self.legal_moves_cache.clear();
+
+        true
+    }
+
+    /// Undo the last move, returning to the previous position.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(Move)` - The move that was undone
+    /// * `None` - If there are no moves to undo
+    ///
+    /// # Side Effects
+    ///
+    /// - Updates the position to the previous state
+    /// - Decrements the history index
+    /// - Clears selection state
+    pub fn undo_move(&mut self) -> Option<Move> {
+        if self.history_index == 0 {
+            return None;
+        }
+
+        self.history_index -= 1;
+        let (mv, undo_info) = self.move_history[self.history_index];
+        self.position.unmake_move(mv, undo_info);
+
+        // Clear selection state
+        self.selected_tile = None;
+        self.legal_moves_cache.clear();
+
+        Some(mv)
+    }
+
+    /// Redo a previously undone move.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(Move)` - The move that was redone
+    /// * `None` - If there are no moves to redo
+    ///
+    /// # Side Effects
+    ///
+    /// - Updates the position
+    /// - Increments the history index
+    /// - Clears selection state
+    pub fn redo_move(&mut self) -> Option<Move> {
+        if self.history_index >= self.move_history.len() {
+            return None;
+        }
+
+        let (mv, _) = self.move_history[self.history_index];
+        self.position.mk_move(mv);
+        self.history_index += 1;
+
+        // Clear selection state
+        self.selected_tile = None;
+        self.legal_moves_cache.clear();
+
+        Some(mv)
+    }
+
+    /// Check if there are moves to undo.
+    pub fn can_undo(&self) -> bool {
+        self.history_index > 0
+    }
+
+    /// Check if there are moves to redo.
+    pub fn can_redo(&self) -> bool {
+        self.history_index < self.move_history.len()
+    }
+
+    /// Get the current move number (number of moves played).
+    pub fn move_count(&self) -> usize {
+        self.history_index
+    }
+
+    /// Get the total number of moves in history (including undone moves).
+    pub fn history_len(&self) -> usize {
+        self.move_history.len()
+    }
+
+    /// Flip the board orientation (toggle POV between White and Black).
+    pub fn flip_pov(&mut self) {
+        self.pov = match self.pov {
+            Color::White => Color::Black,
+            Color::Black => Color::White,
+        };
+    }
+
+    /// Get whose turn it is based on the number of moves played.
+    ///
+    /// White moves on even move counts (0, 2, 4, ...), Black on odd (1, 3, 5, ...).
+    pub fn current_turn(&self) -> Color {
+        if self.history_index % 2 == 0 {
+            Color::White
+        } else {
+            Color::Black
+        }
+    }
+
+    /// Check if the game is over (checkmate or stalemate).
+    ///
+    /// Note: This only checks checkmate and stalemate. Draws by insufficient material,
+    /// repetition, or fifty-move rule are handled by the Orchestrator.
+    pub fn is_game_over(&self) -> bool {
+        let turn = self.current_turn();
+        self.is_checkmate(turn) || self.is_stalemate(turn)
+    }
+
+    /// Get the game result if the game is over (checkmate or stalemate).
+    ///
+    /// Note: This only checks checkmate and stalemate. For full draw detection
+    /// including insufficient material, use Orchestrator's check_for_game_end.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(GameResult)` - The result if checkmate or stalemate
+    /// * `None` - If the game is still in progress
+    pub fn get_game_result(&self) -> Option<GameResult> {
+        let turn = self.current_turn();
+
+        if self.is_checkmate(turn) {
+            // The player whose turn it is has been checkmated
+            Some(match turn {
+                Color::White => GameResult::BlackWins,
+                Color::Black => GameResult::WhiteWins,
+            })
+        } else if self.is_stalemate(turn) {
+            Some(GameResult::Stalemate)
+        } else {
+            None
+        }
+    }
+
     /// Check if the given color is in checkmate.
     ///
     /// # Arguments
@@ -325,6 +531,8 @@ impl Board {
         };
         self.selected_tile = None;
         self.legal_moves_cache.clear();
+        self.move_history.clear();
+        self.history_index = 0;
     }
 
     // ===========================
@@ -472,6 +680,39 @@ impl Board {
     /// ```
     pub fn draw(&mut self) {
         self.renderer.draw_position(&self.position, self.selected_tile, self.pov);
+    }
+
+    /// Draw the game controls bar below the board.
+    ///
+    /// Shows undo, redo, and flip board buttons. The undo/redo buttons
+    /// are enabled/disabled based on move history state.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// // After drawing the board
+    /// board.draw_controls_bar();
+    /// ```
+    pub fn draw_controls_bar(&mut self) {
+        let can_undo = self.can_undo();
+        let can_redo = self.can_redo();
+        self.renderer.draw_controls_bar(can_undo, can_redo);
+    }
+
+    /// Get the control action at the given screen coordinates.
+    ///
+    /// Used to detect clicks on control buttons.
+    ///
+    /// # Arguments
+    ///
+    /// * `coords` - Physical position in pixels
+    ///
+    /// # Returns
+    ///
+    /// * `Some(ControlAction)` - The action if coordinates are over a button
+    /// * `None` - If not over any control button
+    pub fn get_control_action_at_coords(&self, coords: PhysicalPosition<f64>) -> Option<crate::renderer::ControlAction> {
+        self.renderer.get_control_action_at_coords(coords)
     }
 
     /// Draw the menu screen.
@@ -681,6 +922,37 @@ mod tests {
         }
 
         fn is_coord_in_side_button(&self, _coords: PhysicalPosition<f64>, _button_index: usize) -> bool {
+            false
+        }
+
+        fn draw_controls_bar(&mut self, _can_undo: bool, _can_redo: bool) {
+            // No-op for tests
+        }
+
+        fn get_control_action_at_coords(&self, _coords: PhysicalPosition<f64>) -> Option<crate::renderer::ControlAction> {
+            None
+        }
+
+        fn draw_ai_setup(
+            &mut self,
+            _ai_types: &[crate::agent::ai::AIType],
+            _white_type_index: usize,
+            _white_difficulty: crate::agent::ai::Difficulty,
+            _black_type_index: usize,
+            _black_difficulty: crate::agent::ai::Difficulty,
+        ) {
+            // No-op for tests
+        }
+
+        fn get_white_difficulty_at_coords(&self, _coords: PhysicalPosition<f64>) -> Option<usize> {
+            None
+        }
+
+        fn get_black_difficulty_at_coords(&self, _coords: PhysicalPosition<f64>) -> Option<usize> {
+            None
+        }
+
+        fn is_coord_in_start_button(&self, _coords: PhysicalPosition<f64>) -> bool {
             false
         }
     }

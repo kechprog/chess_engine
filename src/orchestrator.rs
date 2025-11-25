@@ -25,9 +25,11 @@
 use crate::agent::human_player::HumanPlayer;
 use crate::agent::player::{GameResult, Player};
 use crate::agent::NegamaxPlayer;
+use crate::agent::ai::{AIType, AIConfig, Difficulty};
 use crate::board::Board;
 use crate::game_repr::{Color, Move};
 use crate::renderer::wgpu_renderer::WgpuRenderer;
+use crate::renderer::ControlAction;
 use std::cell::RefCell;
 use std::sync::Arc;
 use winit::event::WindowEvent;
@@ -58,14 +60,26 @@ pub enum GameMode {
 
 /// Menu state for tracking sub-menus and selections.
 ///
-/// Used to navigate between main menu and side selection for PvAI mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Used to navigate between main menu, side selection, and AI setup screens.
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum MenuState {
     /// Main menu showing game mode options
     ModeSelection,
 
     /// Side selection menu for PvAI (choose White or Black)
     SideSelection,
+
+    /// Combined AI setup for both players in AIvAI mode (single screen)
+    AIvAISetup {
+        /// White AI type selection (index into AIType::all())
+        white_type_index: usize,
+        /// White AI difficulty
+        white_difficulty: Difficulty,
+        /// Black AI type selection (index into AIType::all())
+        black_type_index: usize,
+        /// Black AI difficulty
+        black_difficulty: Difficulty,
+    },
 }
 
 /// Root component managing application lifecycle and game coordination.
@@ -136,6 +150,12 @@ pub struct Orchestrator {
     /// User's chosen color for PvAI mode
     /// Only meaningful when in SideSelection menu state or starting PvAI game
     user_color_choice: Option<Color>,
+
+    /// AI configuration for White player in AIvAI mode
+    white_ai_config: Option<AIConfig>,
+
+    /// AI configuration for Black player in AIvAI mode
+    black_ai_config: Option<AIConfig>,
 }
 
 impl Orchestrator {
@@ -177,6 +197,8 @@ impl Orchestrator {
             pending_promotion: None,
             menu_state: MenuState::ModeSelection,
             user_color_choice: None,
+            white_ai_config: None,
+            black_ai_config: None,
         }
     }
 
@@ -201,12 +223,22 @@ impl Orchestrator {
             WindowEvent::RedrawRequested => {
                 if self.game_mode == GameMode::Menu {
                     // Draw appropriate menu based on menu state
-                    match self.menu_state {
+                    match &self.menu_state {
                         MenuState::ModeSelection => {
                             self.board.borrow_mut().draw_menu(false);
                         }
                         MenuState::SideSelection => {
                             self.board.borrow_mut().draw_side_selection();
+                        }
+                        MenuState::AIvAISetup { white_type_index, white_difficulty, black_type_index, black_difficulty } => {
+                            let ai_types = AIType::all();
+                            self.board.borrow_mut().renderer_mut().draw_ai_setup(
+                                ai_types,
+                                *white_type_index,
+                                *white_difficulty,
+                                *black_type_index,
+                                *black_difficulty,
+                            );
                         }
                     }
                 } else if let Some(result) = self.game_result {
@@ -250,6 +282,16 @@ impl Orchestrator {
                                 drop(board);
                                 self.menu_state = MenuState::SideSelection;
                                 self.window.request_redraw();
+                            } else if board.is_coord_in_button(mouse_pos, 2) {
+                                // AIvAI button clicked - show combined AI setup
+                                drop(board);
+                                self.menu_state = MenuState::AIvAISetup {
+                                    white_type_index: 0,
+                                    white_difficulty: Difficulty::Medium,
+                                    black_type_index: 0,
+                                    black_difficulty: Difficulty::Medium,
+                                };
+                                self.window.request_redraw();
                             }
                         }
                         MenuState::SideSelection => {
@@ -270,15 +312,92 @@ impl Orchestrator {
                                 self.start_game();
                             }
                         }
+                        MenuState::AIvAISetup { ref mut white_type_index, ref mut white_difficulty, ref mut black_type_index, ref mut black_difficulty } => {
+                            let board = self.board.borrow();
+                            let mouse_pos = board.mouse_pos();
+
+                            // Check White difficulty button clicks
+                            if let Some(diff_idx) = board.renderer().get_white_difficulty_at_coords(mouse_pos) {
+                                drop(board);
+                                let difficulties = [Difficulty::Easy, Difficulty::Medium, Difficulty::Hard, Difficulty::Expert];
+                                if diff_idx < difficulties.len() {
+                                    *white_difficulty = difficulties[diff_idx];
+                                }
+                                self.window.request_redraw();
+                                return;
+                            }
+
+                            // Check Black difficulty button clicks
+                            if let Some(diff_idx) = board.renderer().get_black_difficulty_at_coords(mouse_pos) {
+                                drop(board);
+                                let difficulties = [Difficulty::Easy, Difficulty::Medium, Difficulty::Hard, Difficulty::Expert];
+                                if diff_idx < difficulties.len() {
+                                    *black_difficulty = difficulties[diff_idx];
+                                }
+                                self.window.request_redraw();
+                                return;
+                            }
+
+                            // Check start button
+                            if board.renderer().is_coord_in_start_button(mouse_pos) {
+                                // Save both AI configs and start the game
+                                let white_config = AIConfig::new(
+                                    AIType::all()[*white_type_index],
+                                    *white_difficulty,
+                                );
+                                let black_config = AIConfig::new(
+                                    AIType::all()[*black_type_index],
+                                    *black_difficulty,
+                                );
+                                drop(board);
+                                self.white_ai_config = Some(white_config);
+                                self.black_ai_config = Some(black_config);
+                                self.set_game_mode(GameMode::AIvAI);
+                                self.start_game();
+                            }
+                        }
                     }
-                } else if self.game_result.is_some() && state == ElementState::Pressed {
-                    // Click anywhere on game end overlay to return to menu
-                    self.return_to_menu();
+                } else if self.game_result.is_some() && state == ElementState::Pressed && button == MouseButton::Left {
+                    // Check for control button clicks first
+                    let board = self.board.borrow();
+                    let mouse_pos = board.mouse_pos();
+                    if let Some(action) = board.renderer().get_control_action_at_coords(mouse_pos) {
+                        drop(board);
+                        self.handle_control_action(action);
+                    } else {
+                        // Click anywhere else on game end overlay to return to menu
+                        drop(board);
+                        self.return_to_menu();
+                    }
                 } else if self.pending_promotion.is_some() && state == ElementState::Pressed && button == MouseButton::Left {
                     // Handle promotion piece selection
                     self.handle_promotion_click();
+                } else if self.game_active && state == ElementState::Pressed && button == MouseButton::Left {
+                    // Check for control button clicks first
+                    let board = self.board.borrow();
+                    let mouse_pos = board.mouse_pos();
+                    if let Some(action) = board.renderer().get_control_action_at_coords(mouse_pos) {
+                        drop(board);
+                        self.handle_control_action(action);
+                    } else {
+                        drop(board);
+                        // Delegate to current player when game is active
+                        if let Some((player1, player2)) = &mut self.players {
+                            let current_player = match self.current_turn {
+                                Color::White => player1,
+                                Color::Black => player2,
+                            };
+                            current_player.handle_event(&event);
+
+                            // Request redraw after handling event to show UI updates
+                            self.window.request_redraw();
+
+                            // Poll for move after each event
+                            self.poll_current_player();
+                        }
+                    }
                 } else if self.game_active {
-                    // Delegate to current player when game is active
+                    // Handle non-left-click or release events
                     if let Some((player1, player2)) = &mut self.players {
                         let current_player = match self.current_turn {
                             Color::White => player1,
@@ -314,16 +433,45 @@ impl Orchestrator {
             WindowEvent::KeyboardInput { event: ref key_event, .. } => {
                 // Handle Escape key to return to menu
                 if key_event.state == winit::event::ElementState::Pressed {
-                    if let Key::Named(NamedKey::Escape) = &key_event.logical_key {
-                        if self.game_active || self.game_result.is_some() || self.pending_promotion.is_some() {
-                            self.return_to_menu();
-                            return;
-                        } else if self.menu_state == MenuState::SideSelection {
-                            // Go back to mode selection from side selection
-                            self.menu_state = MenuState::ModeSelection;
-                            self.window.request_redraw();
-                            return;
+                    match &key_event.logical_key {
+                        Key::Named(NamedKey::Escape) => {
+                            if self.game_active || self.game_result.is_some() || self.pending_promotion.is_some() {
+                                self.return_to_menu();
+                                return;
+                            } else if self.menu_state == MenuState::SideSelection {
+                                // Go back to mode selection from side selection
+                                self.menu_state = MenuState::ModeSelection;
+                                self.window.request_redraw();
+                                return;
+                            } else if matches!(self.menu_state, MenuState::AIvAISetup { .. }) {
+                                // Go back to mode selection from AIvAI setup
+                                self.menu_state = MenuState::ModeSelection;
+                                self.window.request_redraw();
+                                return;
+                            }
                         }
+                        Key::Named(NamedKey::ArrowLeft) => {
+                            // Undo/backward navigation
+                            if self.game_active || self.game_result.is_some() {
+                                self.handle_control_action(ControlAction::Undo);
+                                return;
+                            }
+                        }
+                        Key::Named(NamedKey::ArrowRight) => {
+                            // Redo/forward navigation
+                            if self.game_active || self.game_result.is_some() {
+                                self.handle_control_action(ControlAction::Redo);
+                                return;
+                            }
+                        }
+                        Key::Character(c) if c.to_lowercase() == "r" => {
+                            // Flip board
+                            if self.game_active || self.game_result.is_some() {
+                                self.handle_control_action(ControlAction::FlipBoard);
+                                return;
+                            }
+                        }
+                        _ => {}
                     }
                 }
 
@@ -550,7 +698,10 @@ impl Orchestrator {
             }
 
             GameMode::AIvAI => {
-                // TODO: Future implementation
+                // AIvAI uses user-paced spectator mode
+                // No persistent Player instances needed - we generate moves on demand
+                // using the stored AI configs
+                self.players = None;
             }
 
             GameMode::Online => {
@@ -948,5 +1099,110 @@ impl Orchestrator {
             self.process_move(mv);
         }
         // If no piece was selected (clicked outside), do nothing - keep showing overlay
+    }
+
+    /// Handle a control action (undo, redo, flip board).
+    ///
+    /// This is called from both keyboard shortcuts and control button clicks.
+    ///
+    /// # Arguments
+    ///
+    /// * `action` - The control action to perform
+    fn handle_control_action(&mut self, action: ControlAction) {
+        match action {
+            ControlAction::Undo => {
+                // In AIvAI mode, navigate backward in history
+                // In other modes, only allow undo in PvP or when it's human's turn
+                if self.game_mode == GameMode::AIvAI {
+                    if self.board.borrow_mut().undo_move().is_some() {
+                        self.current_turn = self.current_turn.opposite();
+                        // Clear game result if we undo past it
+                        self.game_result = None;
+                        self.game_active = true;
+                        self.window.request_redraw();
+                    }
+                } else if self.game_mode == GameMode::PvP {
+                    // In PvP, allow free undo
+                    if self.board.borrow_mut().undo_move().is_some() {
+                        self.current_turn = self.current_turn.opposite();
+                        self.game_result = None;
+                        self.game_active = true;
+                        self.window.request_redraw();
+                    }
+                }
+                // In PvAI, don't allow undo for now (could implement human-only undo later)
+            }
+            ControlAction::Redo => {
+                // In AIvAI mode, navigate forward in history or generate new AI move
+                if self.game_mode == GameMode::AIvAI {
+                    // First try to redo an existing move from history
+                    if self.board.borrow_mut().redo_move().is_some() {
+                        self.current_turn = self.current_turn.opposite();
+                        // Check for game end after redo
+                        self.check_game_end();
+                        self.window.request_redraw();
+                    } else if self.game_active {
+                        // No redo available, generate a new AI move
+                        self.generate_aivai_move();
+                    }
+                } else if self.game_mode == GameMode::PvP {
+                    // In PvP, allow free redo
+                    if self.board.borrow_mut().redo_move().is_some() {
+                        self.current_turn = self.current_turn.opposite();
+                        self.check_game_end();
+                        self.window.request_redraw();
+                    }
+                }
+            }
+            ControlAction::FlipBoard => {
+                self.board.borrow_mut().flip_pov();
+                self.window.request_redraw();
+            }
+        }
+    }
+
+    /// Generate a single AI move for AIvAI mode.
+    ///
+    /// This is called when the user presses the forward button in AIvAI mode
+    /// and there's no redo history available. It generates one move for the
+    /// current AI player, allowing the user to step through the game at their pace.
+    fn generate_aivai_move(&mut self) {
+        if !self.game_active || self.game_mode != GameMode::AIvAI {
+            return;
+        }
+
+        // Get the appropriate AI config for the current turn
+        let ai_config = match self.current_turn {
+            Color::White => self.white_ai_config,
+            Color::Black => self.black_ai_config,
+        };
+
+        let ai_config = match ai_config {
+            Some(config) => config,
+            None => return,
+        };
+
+        // Generate a move using the AI config
+        let position = self.board.borrow().position().clone();
+        if let Some(mv) = ai_config.generate_move(&position, self.current_turn) {
+            // Execute the move with history tracking
+            {
+                let mut board = self.board.borrow_mut();
+                board.execute_move_undoable(mv);
+            }
+
+            // Check for game end
+            self.check_game_end();
+
+            if self.game_active {
+                // Switch turns
+                self.current_turn = self.current_turn.opposite();
+            }
+
+            self.window.request_redraw();
+        } else {
+            // No legal moves available - game should be over
+            self.check_game_end();
+        }
     }
 }

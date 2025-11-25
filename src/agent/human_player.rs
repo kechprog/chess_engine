@@ -338,6 +338,27 @@ mod tests {
         fn is_coord_in_side_button(&self, _coords: PhysicalPosition<f64>, _button_index: usize) -> bool {
             false
         }
+        fn draw_controls_bar(&mut self, _can_undo: bool, _can_redo: bool) {}
+        fn get_control_action_at_coords(&self, _coords: PhysicalPosition<f64>) -> Option<crate::renderer::ControlAction> {
+            None
+        }
+        fn draw_ai_setup(
+            &mut self,
+            _ai_types: &[crate::agent::ai::AIType],
+            _white_type_index: usize,
+            _white_difficulty: crate::agent::ai::Difficulty,
+            _black_type_index: usize,
+            _black_difficulty: crate::agent::ai::Difficulty,
+        ) {}
+        fn get_white_difficulty_at_coords(&self, _coords: PhysicalPosition<f64>) -> Option<usize> {
+            None
+        }
+        fn get_black_difficulty_at_coords(&self, _coords: PhysicalPosition<f64>) -> Option<usize> {
+            None
+        }
+        fn is_coord_in_start_button(&self, _coords: PhysicalPosition<f64>) -> bool {
+            false
+        }
     }
 
     #[test]

@@ -18,8 +18,10 @@ mod negamax_player;
 mod evaluation;
 mod move_ordering;
 mod piece_square_tables;
+mod ai_type;
 
 pub use negamax_player::{NegamaxPlayer, Difficulty};
+pub use ai_type::{AIType, AIConfig};
 
 // Re-export useful types
 pub use search::SearchResult;
