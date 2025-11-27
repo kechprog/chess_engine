@@ -1,6 +1,8 @@
 use crate::agent::player::GameResult;
 use crate::game_repr::{Color, Position};
 use crate::agent::ai::{AIType, Difficulty};
+use crate::menu::MenuState;
+use crate::orchestrator::AISetupButton;
 use winit::dpi::PhysicalPosition;
 
 pub mod wgpu_renderer;
@@ -43,6 +45,26 @@ pub trait Renderer {
     /// # Arguments
     /// * `new_size` - New window dimensions in pixels
     fn resize(&mut self, new_size: (u32, u32));
+
+    // ===========================
+    // New Menu System (Phase 4)
+    // ===========================
+
+    /// Draw a menu screen based on the current MenuState.
+    ///
+    /// This method uses the centralized layout definitions from `crate::menu::layout`
+    /// for consistent button positioning between rendering and hit detection.
+    ///
+    /// # Arguments
+    /// * `state` - The current menu state to render
+    fn draw_menu_state(&mut self, state: &MenuState);
+
+    /// Get the current window size (for Menu coordinate conversion)
+    fn window_size(&self) -> (u32, u32);
+
+    // ===========================
+    // Legacy Menu Methods (to be removed)
+    // ===========================
 
     /// Draw the menu screen
     ///
@@ -144,6 +166,7 @@ pub trait Renderer {
     /// * `white_difficulty` - Currently selected difficulty for White
     /// * `black_type_index` - Currently selected AI type index for Black
     /// * `black_difficulty` - Currently selected difficulty for Black
+    /// * `pressed_button` - Currently pressed button (if any) for visual feedback
     fn draw_ai_setup(
         &mut self,
         ai_types: &[AIType],
@@ -151,6 +174,7 @@ pub trait Renderer {
         white_difficulty: Difficulty,
         black_type_index: usize,
         black_difficulty: Difficulty,
+        pressed_button: Option<AISetupButton>,
     );
 
     /// Check if screen coordinates are over a White AI difficulty button

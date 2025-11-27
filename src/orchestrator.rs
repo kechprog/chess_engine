@@ -28,6 +28,7 @@ use crate::agent::NegamaxPlayer;
 use crate::agent::ai::{AIType, AIConfig, Difficulty};
 use crate::board::Board;
 use crate::game_repr::{Color, Move};
+use crate::menu::{GameConfig, GameMode as MenuGameMode, Menu, PlayerConfig};
 use crate::renderer::wgpu_renderer::WgpuRenderer;
 use crate::renderer::ControlAction;
 use std::cell::RefCell;
@@ -60,26 +61,23 @@ pub enum GameMode {
 
 /// Menu state for tracking sub-menus and selections.
 ///
-/// Used to navigate between main menu, side selection, and AI setup screens.
+/// DEPRECATED: This is now handled by the new Menu struct in crate::menu.
+/// Kept for backwards compatibility but will be removed in a future version.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum MenuState {
     /// Main menu showing game mode options
     ModeSelection,
+}
 
-    /// Side selection menu for PvAI (choose White or Black)
-    SideSelection,
-
-    /// Combined AI setup for both players in AIvAI mode (single screen)
-    AIvAISetup {
-        /// White AI type selection (index into AIType::all())
-        white_type_index: usize,
-        /// White AI difficulty
-        white_difficulty: Difficulty,
-        /// Black AI type selection (index into AIType::all())
-        black_type_index: usize,
-        /// Black AI difficulty
-        black_difficulty: Difficulty,
-    },
+/// Button identifiers for the AI setup screen
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AISetupButton {
+    /// White AI difficulty button (index 0-3: Easy, Medium, Hard, Expert)
+    WhiteDifficulty(usize),
+    /// Black AI difficulty button (index 0-3: Easy, Medium, Hard, Expert)
+    BlackDifficulty(usize),
+    /// Start game button
+    Start,
 }
 
 /// Root component managing application lifecycle and game coordination.
@@ -143,8 +141,12 @@ pub struct Orchestrator {
     /// Contains (from_square, to_square) when waiting for user to select promotion piece
     pending_promotion: Option<(u8, u8)>,
 
+    /// New menu system that handles menu state and event processing
+    menu: Menu,
+
     /// Current menu state (ModeSelection or SideSelection)
     /// Only meaningful when game_mode is Menu
+    /// DEPRECATED: Will be replaced by self.menu.state()
     menu_state: MenuState,
 
     /// User's chosen color for PvAI mode
@@ -195,6 +197,7 @@ impl Orchestrator {
             starting_fen: String::new(),
             game_result: None,
             pending_promotion: None,
+            menu: Menu::new(),
             menu_state: MenuState::ModeSelection,
             user_color_choice: None,
             white_ai_config: None,
@@ -222,25 +225,8 @@ impl Orchestrator {
         match event {
             WindowEvent::RedrawRequested => {
                 if self.game_mode == GameMode::Menu {
-                    // Draw appropriate menu based on menu state
-                    match &self.menu_state {
-                        MenuState::ModeSelection => {
-                            self.board.borrow_mut().draw_menu(false);
-                        }
-                        MenuState::SideSelection => {
-                            self.board.borrow_mut().draw_side_selection();
-                        }
-                        MenuState::AIvAISetup { white_type_index, white_difficulty, black_type_index, black_difficulty } => {
-                            let ai_types = AIType::all();
-                            self.board.borrow_mut().renderer_mut().draw_ai_setup(
-                                ai_types,
-                                *white_type_index,
-                                *white_difficulty,
-                                *black_type_index,
-                                *black_difficulty,
-                            );
-                        }
-                    }
+                    // Draw menu using new menu system
+                    self.board.borrow_mut().renderer_mut().draw_menu_state(self.menu.state());
                 } else if let Some(result) = self.game_result {
                     // Game has ended - draw board with game end overlay
                     self.board.borrow_mut().draw_game_end(result);
@@ -255,6 +241,7 @@ impl Orchestrator {
 
             WindowEvent::Resized(_new_size) => {
                 self.board.borrow_mut().resize((_new_size.width, _new_size.height));
+                self.menu.update_window_size((_new_size.width, _new_size.height));
                 self.window.request_redraw();
             }
 
@@ -265,98 +252,16 @@ impl Orchestrator {
             WindowEvent::MouseInput { state, button, .. } => {
                 use winit::event::{ElementState, MouseButton};
 
-                // Handle menu button clicks
+                // Handle menu button clicks using new Menu system
                 if self.game_mode == GameMode::Menu && state == ElementState::Pressed && button == MouseButton::Left {
-                    match self.menu_state {
-                        MenuState::ModeSelection => {
-                            let board = self.board.borrow();
-                            let mouse_pos = board.mouse_pos();
-
-                            if board.is_coord_in_button(mouse_pos, 0) {
-                                // PvP button clicked
-                                drop(board);
-                                self.set_game_mode(GameMode::PvP);
-                                self.start_game();
-                            } else if board.is_coord_in_button(mouse_pos, 1) {
-                                // PvAI button clicked - show side selection menu
-                                drop(board);
-                                self.menu_state = MenuState::SideSelection;
-                                self.window.request_redraw();
-                            } else if board.is_coord_in_button(mouse_pos, 2) {
-                                // AIvAI button clicked - show combined AI setup
-                                drop(board);
-                                self.menu_state = MenuState::AIvAISetup {
-                                    white_type_index: 0,
-                                    white_difficulty: Difficulty::Medium,
-                                    black_type_index: 0,
-                                    black_difficulty: Difficulty::Medium,
-                                };
-                                self.window.request_redraw();
-                            }
-                        }
-                        MenuState::SideSelection => {
-                            let board = self.board.borrow();
-                            let mouse_pos = board.mouse_pos();
-
-                            if board.is_coord_in_side_button(mouse_pos, 0) {
-                                // Play as White button clicked
-                                drop(board);
-                                self.user_color_choice = Some(Color::White);
-                                self.set_game_mode(GameMode::PvAI);
-                                self.start_game();
-                            } else if board.is_coord_in_side_button(mouse_pos, 1) {
-                                // Play as Black button clicked
-                                drop(board);
-                                self.user_color_choice = Some(Color::Black);
-                                self.set_game_mode(GameMode::PvAI);
-                                self.start_game();
-                            }
-                        }
-                        MenuState::AIvAISetup { ref mut white_type_index, ref mut white_difficulty, ref mut black_type_index, ref mut black_difficulty } => {
-                            let board = self.board.borrow();
-                            let mouse_pos = board.mouse_pos();
-
-                            // Check White difficulty button clicks
-                            if let Some(diff_idx) = board.renderer().get_white_difficulty_at_coords(mouse_pos) {
-                                drop(board);
-                                let difficulties = [Difficulty::Easy, Difficulty::Medium, Difficulty::Hard, Difficulty::Expert];
-                                if diff_idx < difficulties.len() {
-                                    *white_difficulty = difficulties[diff_idx];
-                                }
-                                self.window.request_redraw();
-                                return;
-                            }
-
-                            // Check Black difficulty button clicks
-                            if let Some(diff_idx) = board.renderer().get_black_difficulty_at_coords(mouse_pos) {
-                                drop(board);
-                                let difficulties = [Difficulty::Easy, Difficulty::Medium, Difficulty::Hard, Difficulty::Expert];
-                                if diff_idx < difficulties.len() {
-                                    *black_difficulty = difficulties[diff_idx];
-                                }
-                                self.window.request_redraw();
-                                return;
-                            }
-
-                            // Check start button
-                            if board.renderer().is_coord_in_start_button(mouse_pos) {
-                                // Save both AI configs and start the game
-                                let white_config = AIConfig::new(
-                                    AIType::all()[*white_type_index],
-                                    *white_difficulty,
-                                );
-                                let black_config = AIConfig::new(
-                                    AIType::all()[*black_type_index],
-                                    *black_difficulty,
-                                );
-                                drop(board);
-                                self.white_ai_config = Some(white_config);
-                                self.black_ai_config = Some(black_config);
-                                self.set_game_mode(GameMode::AIvAI);
-                                self.start_game();
-                            }
-                        }
+                    // Use the new menu system for click handling
+                    if let Some(config) = self.menu.handle_click() {
+                        // Menu returned a game configuration - start the game
+                        self.start_game_from_config(config);
+                        return;
                     }
+                    // Menu state may have changed, request redraw
+                    self.window.request_redraw();
                 } else if self.game_result.is_some() && state == ElementState::Pressed && button == MouseButton::Left {
                     // Check for control button clicks first
                     let board = self.board.borrow();
@@ -417,6 +322,7 @@ impl Orchestrator {
             WindowEvent::CursorMoved { position, .. } => {
                 // Track mouse position for menu button detection
                 self.board.borrow_mut().update_mouse_pos(position);
+                self.menu.update_mouse_pos(position);
 
                 // Delegate to player if game is active
                 if self.game_active {
@@ -438,16 +344,12 @@ impl Orchestrator {
                             if self.game_active || self.game_result.is_some() || self.pending_promotion.is_some() {
                                 self.return_to_menu();
                                 return;
-                            } else if self.menu_state == MenuState::SideSelection {
-                                // Go back to mode selection from side selection
-                                self.menu_state = MenuState::ModeSelection;
-                                self.window.request_redraw();
-                                return;
-                            } else if matches!(self.menu_state, MenuState::AIvAISetup { .. }) {
-                                // Go back to mode selection from AIvAI setup
-                                self.menu_state = MenuState::ModeSelection;
-                                self.window.request_redraw();
-                                return;
+                            } else if self.game_mode == GameMode::Menu {
+                                // Use new menu system's go_back
+                                if self.menu.go_back() {
+                                    self.window.request_redraw();
+                                    return;
+                                }
                             }
                         }
                         Key::Named(NamedKey::ArrowLeft) => {
@@ -1016,11 +918,49 @@ impl Orchestrator {
         self.game_result = None;
         self.pending_promotion = None;
         self.menu_state = MenuState::ModeSelection;
+        self.menu.reset(); // Reset new menu system
         self.user_color_choice = None;
 
         self.board.borrow_mut().set_selected_tile(None);
 
         self.window.request_redraw();
+    }
+
+    /// Start a game from a MenuGameConfig returned by the new Menu system.
+    ///
+    /// This method translates the menu configuration into the orchestrator's
+    /// internal state and starts the game.
+    fn start_game_from_config(&mut self, config: GameConfig) {
+        // Set the game mode based on the menu config
+        match config.mode {
+            MenuGameMode::PvP => {
+                self.set_game_mode(GameMode::PvP);
+            }
+            MenuGameMode::PvAI => {
+                // Set the user's color choice for PvAI mode
+                self.user_color_choice = config.human_color();
+                self.set_game_mode(GameMode::PvAI);
+            }
+            MenuGameMode::AIvAI => {
+                // Extract AI configurations from the config
+                let white_difficulty = match config.white_player {
+                    PlayerConfig::AI { difficulty } => difficulty,
+                    PlayerConfig::Human => Difficulty::Medium, // Fallback, shouldn't happen
+                };
+                let black_difficulty = match config.black_player {
+                    PlayerConfig::AI { difficulty } => difficulty,
+                    PlayerConfig::Human => Difficulty::Medium, // Fallback, shouldn't happen
+                };
+
+                // Create AI configs for both players
+                self.white_ai_config = Some(AIConfig::new(AIType::Negamax, white_difficulty));
+                self.black_ai_config = Some(AIConfig::new(AIType::Negamax, black_difficulty));
+                self.set_game_mode(GameMode::AIvAI);
+            }
+        }
+
+        // Start the game
+        self.start_game();
     }
 
     /// Handle game end by notifying players and updating state.

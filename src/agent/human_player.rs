@@ -349,6 +349,7 @@ mod tests {
             _white_difficulty: crate::agent::ai::Difficulty,
             _black_type_index: usize,
             _black_difficulty: crate::agent::ai::Difficulty,
+            _pressed_button: Option<crate::orchestrator::AISetupButton>,
         ) {}
         fn get_white_difficulty_at_coords(&self, _coords: PhysicalPosition<f64>) -> Option<usize> {
             None
@@ -358,6 +359,10 @@ mod tests {
         }
         fn is_coord_in_start_button(&self, _coords: PhysicalPosition<f64>) -> bool {
             false
+        }
+        fn draw_menu_state(&mut self, _state: &crate::menu::MenuState) {}
+        fn window_size(&self) -> (u32, u32) {
+            (800, 800)
         }
     }
 

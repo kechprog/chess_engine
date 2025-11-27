@@ -15,6 +15,7 @@ mod agent;
 mod assets;
 mod board;
 mod game_repr;
+mod menu;
 mod orchestrator;
 mod renderer;
 

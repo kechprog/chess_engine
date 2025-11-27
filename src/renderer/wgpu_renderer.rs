@@ -1,6 +1,9 @@
+use crate::agent::ai::Difficulty;
 use crate::agent::player::GameResult;
 use crate::assets;
 use crate::game_repr::{Color, Piece, Position, Type};
+use crate::menu::{layout, MenuState};
+use crate::orchestrator::AISetupButton;
 use crate::renderer::Renderer;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -725,6 +728,293 @@ impl WgpuRenderer {
             TexturedVertex { position: [top_left.0 + dot_w, top_left.1 - dot_h], tex_coords: [1.0, 1.0] },
         ]
     }
+
+    // ===========================
+    // Menu Helper Methods
+    // ===========================
+
+    /// Draw a button rectangle with the given color
+    fn draw_button_rect<'a>(
+        &self,
+        render_pass: &mut wgpu::RenderPass<'a>,
+        rect: &layout::ButtonRect,
+        color: [f32; 4],
+    ) {
+        let positions = rect.positions();
+        let vertices = [
+            TileVertex { position: positions[0], color },
+            TileVertex { position: positions[1], color },
+            TileVertex { position: positions[2], color },
+            TileVertex { position: positions[3], color },
+        ];
+
+        let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Menu Button Vertex Buffer"),
+            contents: bytemuck::cast_slice(&vertices),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+
+        render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+        render_pass.draw_indexed(0..6, 0, 0..1);
+    }
+
+    /// Convert NDC Y coordinate to screen Y coordinate
+    fn ndc_to_screen_y(&self, ndc_y: f32, viewport_height: f32) -> f32 {
+        (1.0 - ndc_y) / 2.0 * viewport_height
+    }
+
+    /// Calculate centered X position for text
+    fn center_text_x(&self, text_width: f32, viewport_width: f32) -> f32 {
+        (viewport_width - text_width) / 2.0
+    }
+
+    /// Get text width from a buffer
+    fn get_text_width(&self, buffer: &Buffer) -> f32 {
+        buffer.layout_runs().map(|r| r.line_w).fold(0.0_f32, |a, b| a.max(b))
+    }
+
+    /// Prepare text areas for ModeSelection state
+    fn prepare_mode_selection_text(&mut self, viewport_width: f32, viewport_height: f32) -> Vec<OwnedTextArea> {
+        let mut result = Vec::new();
+
+        // PvP button text
+        let mut pvp_buffer = Buffer::new(&mut self.font_system, Metrics::new(32.0, 40.0));
+        pvp_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+        pvp_buffer.set_text(&mut self.font_system, "Player vs Player", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+        let pvp_width = self.get_text_width(&pvp_buffer);
+        let pvp_center_y = self.ndc_to_screen_y((layout::main_menu::PVP.top + layout::main_menu::PVP.bottom()) / 2.0, viewport_height);
+        result.push(OwnedTextArea {
+            buffer: pvp_buffer,
+            left: self.center_text_x(pvp_width, viewport_width),
+            top: pvp_center_y - 16.0,
+            color: glyphon::Color::rgb(0, 0, 0),
+        });
+
+        // PvAI button text
+        let mut pvai_buffer = Buffer::new(&mut self.font_system, Metrics::new(32.0, 40.0));
+        pvai_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+        pvai_buffer.set_text(&mut self.font_system, "Player vs AI", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+        let pvai_width = self.get_text_width(&pvai_buffer);
+        let pvai_center_y = self.ndc_to_screen_y((layout::main_menu::PVAI.top + layout::main_menu::PVAI.bottom()) / 2.0, viewport_height);
+        result.push(OwnedTextArea {
+            buffer: pvai_buffer,
+            left: self.center_text_x(pvai_width, viewport_width),
+            top: pvai_center_y - 16.0,
+            color: glyphon::Color::rgb(0, 0, 0),
+        });
+
+        // AIvAI button text
+        let mut aivai_buffer = Buffer::new(&mut self.font_system, Metrics::new(32.0, 40.0));
+        aivai_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+        aivai_buffer.set_text(&mut self.font_system, "AI vs AI", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+        let aivai_width = self.get_text_width(&aivai_buffer);
+        let aivai_center_y = self.ndc_to_screen_y((layout::main_menu::AIVAI.top + layout::main_menu::AIVAI.bottom()) / 2.0, viewport_height);
+        result.push(OwnedTextArea {
+            buffer: aivai_buffer,
+            left: self.center_text_x(aivai_width, viewport_width),
+            top: aivai_center_y - 16.0,
+            color: glyphon::Color::rgb(0, 0, 0),
+        });
+
+        result
+    }
+
+    /// Prepare text areas for SideSelection state
+    fn prepare_side_selection_text(&mut self, viewport_width: f32, viewport_height: f32) -> Vec<OwnedTextArea> {
+        let mut result = Vec::new();
+
+        // Title
+        let mut title_buffer = Buffer::new(&mut self.font_system, Metrics::new(40.0, 50.0));
+        title_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+        title_buffer.set_text(&mut self.font_system, "Choose Your Side", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+        let title_width = self.get_text_width(&title_buffer);
+        result.push(OwnedTextArea {
+            buffer: title_buffer,
+            left: self.center_text_x(title_width, viewport_width),
+            top: 50.0,
+            color: glyphon::Color::rgb(255, 255, 255),
+        });
+
+        // Play as White button text
+        let mut white_buffer = Buffer::new(&mut self.font_system, Metrics::new(32.0, 40.0));
+        white_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+        white_buffer.set_text(&mut self.font_system, "Play as White", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+        let white_width = self.get_text_width(&white_buffer);
+        let white_center_y = self.ndc_to_screen_y((layout::side_selection::WHITE.top + layout::side_selection::WHITE.bottom()) / 2.0, viewport_height);
+        result.push(OwnedTextArea {
+            buffer: white_buffer,
+            left: self.center_text_x(white_width, viewport_width),
+            top: white_center_y - 16.0,
+            color: glyphon::Color::rgb(0, 0, 0),
+        });
+
+        // Play as Black button text
+        let mut black_buffer = Buffer::new(&mut self.font_system, Metrics::new(32.0, 40.0));
+        black_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+        black_buffer.set_text(&mut self.font_system, "Play as Black", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+        let black_width = self.get_text_width(&black_buffer);
+        let black_center_y = self.ndc_to_screen_y((layout::side_selection::BLACK.top + layout::side_selection::BLACK.bottom()) / 2.0, viewport_height);
+        result.push(OwnedTextArea {
+            buffer: black_buffer,
+            left: self.center_text_x(black_width, viewport_width),
+            top: black_center_y - 16.0,
+            color: glyphon::Color::rgb(255, 255, 255),
+        });
+
+        result
+    }
+
+    /// Prepare text areas for DifficultySelection state
+    fn prepare_difficulty_selection_text(&mut self, viewport_width: f32, viewport_height: f32, user_color: Color) -> Vec<OwnedTextArea> {
+        let mut result = Vec::new();
+
+        // Title based on color
+        let title_text = match user_color {
+            Color::White => "Select AI Difficulty",
+            Color::Black => "Select AI Difficulty",
+        };
+        let mut title_buffer = Buffer::new(&mut self.font_system, Metrics::new(40.0, 50.0));
+        title_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+        title_buffer.set_text(&mut self.font_system, title_text, Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+        let title_width = self.get_text_width(&title_buffer);
+        result.push(OwnedTextArea {
+            buffer: title_buffer,
+            left: self.center_text_x(title_width, viewport_width),
+            top: 50.0,
+            color: glyphon::Color::rgb(255, 255, 255),
+        });
+
+        // Difficulty button labels
+        let difficulties = ["Easy", "Medium", "Hard", "Expert"];
+        let buttons = layout::difficulty::single_buttons();
+        for (i, text) in difficulties.iter().enumerate() {
+            let mut buffer = Buffer::new(&mut self.font_system, Metrics::new(18.0, 24.0));
+            buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+            buffer.set_text(&mut self.font_system, text, Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+            let text_width = self.get_text_width(&buffer);
+
+            let button_center_x = buttons[i].left + buttons[i].width / 2.0;
+            let button_center_y = (buttons[i].top + buttons[i].bottom()) / 2.0;
+            let screen_x = (button_center_x + 1.0) / 2.0 * viewport_width - text_width / 2.0;
+            let screen_y = self.ndc_to_screen_y(button_center_y, viewport_height) - 10.0;
+
+            result.push(OwnedTextArea {
+                buffer,
+                left: screen_x,
+                top: screen_y,
+                color: glyphon::Color::rgb(255, 255, 255),
+            });
+        }
+
+        result
+    }
+
+    /// Prepare text areas for AIvAISetup state
+    fn prepare_aivai_setup_text(&mut self, viewport_width: f32, viewport_height: f32) -> Vec<OwnedTextArea> {
+        let mut result = Vec::new();
+
+        // Title
+        let mut title_buffer = Buffer::new(&mut self.font_system, Metrics::new(32.0, 40.0));
+        title_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+        title_buffer.set_text(&mut self.font_system, "AI vs AI Setup", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+        let title_width = self.get_text_width(&title_buffer);
+        result.push(OwnedTextArea {
+            buffer: title_buffer,
+            left: self.center_text_x(title_width, viewport_width),
+            top: self.ndc_to_screen_y(0.7, viewport_height),
+            color: glyphon::Color::rgb(255, 255, 255),
+        });
+
+        // White AI label
+        let mut white_label = Buffer::new(&mut self.font_system, Metrics::new(24.0, 30.0));
+        white_label.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+        white_label.set_text(&mut self.font_system, "White AI", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+        let white_label_width = self.get_text_width(&white_label);
+        result.push(OwnedTextArea {
+            buffer: white_label,
+            left: self.center_text_x(white_label_width, viewport_width),
+            top: self.ndc_to_screen_y(0.45, viewport_height),
+            color: glyphon::Color::rgb(255, 255, 255),
+        });
+
+        // White difficulty button labels
+        let difficulties = ["Easy", "Medium", "Hard", "Expert"];
+        let white_buttons = layout::difficulty::white_buttons();
+        for (i, text) in difficulties.iter().enumerate() {
+            let mut buffer = Buffer::new(&mut self.font_system, Metrics::new(16.0, 20.0));
+            buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+            buffer.set_text(&mut self.font_system, text, Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+            let text_width = self.get_text_width(&buffer);
+
+            let button_center_x = white_buttons[i].left + white_buttons[i].width / 2.0;
+            let button_center_y = (white_buttons[i].top + white_buttons[i].bottom()) / 2.0;
+            let screen_x = (button_center_x + 1.0) / 2.0 * viewport_width - text_width / 2.0;
+            let screen_y = self.ndc_to_screen_y(button_center_y, viewport_height) - 8.0;
+
+            result.push(OwnedTextArea {
+                buffer,
+                left: screen_x,
+                top: screen_y,
+                color: glyphon::Color::rgb(255, 255, 255),
+            });
+        }
+
+        // Black AI label
+        let mut black_label = Buffer::new(&mut self.font_system, Metrics::new(24.0, 30.0));
+        black_label.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+        black_label.set_text(&mut self.font_system, "Black AI", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+        let black_label_width = self.get_text_width(&black_label);
+        result.push(OwnedTextArea {
+            buffer: black_label,
+            left: self.center_text_x(black_label_width, viewport_width),
+            top: self.ndc_to_screen_y(-0.05, viewport_height),
+            color: glyphon::Color::rgb(255, 255, 255),
+        });
+
+        // Black difficulty button labels
+        let black_buttons = layout::difficulty::black_buttons();
+        for (i, text) in difficulties.iter().enumerate() {
+            let mut buffer = Buffer::new(&mut self.font_system, Metrics::new(16.0, 20.0));
+            buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+            buffer.set_text(&mut self.font_system, text, Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+            let text_width = self.get_text_width(&buffer);
+
+            let button_center_x = black_buttons[i].left + black_buttons[i].width / 2.0;
+            let button_center_y = (black_buttons[i].top + black_buttons[i].bottom()) / 2.0;
+            let screen_x = (button_center_x + 1.0) / 2.0 * viewport_width - text_width / 2.0;
+            let screen_y = self.ndc_to_screen_y(button_center_y, viewport_height) - 8.0;
+
+            result.push(OwnedTextArea {
+                buffer,
+                left: screen_x,
+                top: screen_y,
+                color: glyphon::Color::rgb(255, 255, 255),
+            });
+        }
+
+        // Start button text
+        let mut start_buffer = Buffer::new(&mut self.font_system, Metrics::new(24.0, 30.0));
+        start_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+        start_buffer.set_text(&mut self.font_system, "Start Game", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+        let start_width = self.get_text_width(&start_buffer);
+        let start_center_y = (layout::difficulty::START.top + layout::difficulty::START.bottom()) / 2.0;
+        result.push(OwnedTextArea {
+            buffer: start_buffer,
+            left: self.center_text_x(start_width, viewport_width),
+            top: self.ndc_to_screen_y(start_center_y, viewport_height) - 12.0,
+            color: glyphon::Color::rgb(255, 255, 255),
+        });
+
+        result
+    }
+}
+
+/// Owned text area data for preparing text rendering
+struct OwnedTextArea {
+    buffer: Buffer,
+    left: f32,
+    top: f32,
+    color: glyphon::Color,
 }
 
 impl Renderer for WgpuRenderer {
@@ -2196,6 +2486,7 @@ impl Renderer for WgpuRenderer {
         white_difficulty: crate::agent::ai::Difficulty,
         _black_type_index: usize,
         black_difficulty: crate::agent::ai::Difficulty,
+        pressed_button: Option<AISetupButton>,
     ) {
         let output = self.surface.get_current_texture().unwrap();
         let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -2209,6 +2500,7 @@ impl Renderer for WgpuRenderer {
         let diff_button_height = 0.12_f32;
         let diff_start_x = -0.45_f32;
         let diff_spacing = 0.05_f32;
+        let border_width = 0.008_f32; // Border thickness
 
         // White section: y from 0.15 to 0.55
         let white_diff_y_top = 0.15_f32;
@@ -2243,7 +2535,7 @@ impl Renderer for WgpuRenderer {
             render_pass.set_pipeline(&self.tile_pipeline);
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
-            // Draw White difficulty buttons
+            // Draw White difficulty buttons with borders
             for i in 0..4 {
                 let is_selected = match white_difficulty {
                     crate::agent::ai::Difficulty::Easy => i == 0,
@@ -2252,15 +2544,44 @@ impl Renderer for WgpuRenderer {
                     crate::agent::ai::Difficulty::Expert => i == 3,
                 };
 
-                let color = if is_selected {
+                let is_pressed = matches!(pressed_button, Some(AISetupButton::WhiteDifficulty(idx)) if idx == i);
+
+                let left = diff_start_x + (i as f32) * (diff_button_width + diff_spacing);
+                let right = left + diff_button_width;
+
+                // Border color - brighter when pressed
+                let border_color = if is_pressed {
+                    [0.9, 1.0, 0.9, 1.0] // Bright green border when pressed
+                } else {
+                    [0.6, 0.7, 0.6, 1.0] // Normal border
+                };
+
+                // Draw border (outer rectangle)
+                let border_vertices = [
+                    TileVertex { position: [left - border_width, white_diff_y_top - border_width], color: border_color },
+                    TileVertex { position: [right + border_width, white_diff_y_top - border_width], color: border_color },
+                    TileVertex { position: [left - border_width, white_diff_y_bottom + border_width], color: border_color },
+                    TileVertex { position: [right + border_width, white_diff_y_bottom + border_width], color: border_color },
+                ];
+
+                let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("White Difficulty Button Border"),
+                    contents: bytemuck::cast_slice(&border_vertices),
+                    usage: wgpu::BufferUsages::VERTEX,
+                });
+                render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+                render_pass.draw_indexed(0..6, 0, 0..1);
+
+                // Inner button color - slightly darker when pressed
+                let color = if is_pressed {
+                    [0.4, 0.55, 0.4, 1.0] // Darker when pressed
+                } else if is_selected {
                     [0.5, 0.7, 0.5, 1.0] // Highlighted green
                 } else {
                     [0.35, 0.4, 0.35, 1.0] // Normal
                 };
 
-                let left = diff_start_x + (i as f32) * (diff_button_width + diff_spacing);
-                let right = left + diff_button_width;
-
+                // Draw inner button
                 let vertices = [
                     TileVertex { position: [left, white_diff_y_top], color },
                     TileVertex { position: [right, white_diff_y_top], color },
@@ -2277,7 +2598,7 @@ impl Renderer for WgpuRenderer {
                 render_pass.draw_indexed(0..6, 0, 0..1);
             }
 
-            // Draw Black difficulty buttons
+            // Draw Black difficulty buttons with borders
             for i in 0..4 {
                 let is_selected = match black_difficulty {
                     crate::agent::ai::Difficulty::Easy => i == 0,
@@ -2286,15 +2607,44 @@ impl Renderer for WgpuRenderer {
                     crate::agent::ai::Difficulty::Expert => i == 3,
                 };
 
-                let color = if is_selected {
+                let is_pressed = matches!(pressed_button, Some(AISetupButton::BlackDifficulty(idx)) if idx == i);
+
+                let left = diff_start_x + (i as f32) * (diff_button_width + diff_spacing);
+                let right = left + diff_button_width;
+
+                // Border color - brighter when pressed
+                let border_color = if is_pressed {
+                    [0.9, 0.9, 1.0, 1.0] // Bright blue border when pressed
+                } else {
+                    [0.6, 0.6, 0.7, 1.0] // Normal border
+                };
+
+                // Draw border (outer rectangle)
+                let border_vertices = [
+                    TileVertex { position: [left - border_width, black_diff_y_top - border_width], color: border_color },
+                    TileVertex { position: [right + border_width, black_diff_y_top - border_width], color: border_color },
+                    TileVertex { position: [left - border_width, black_diff_y_bottom + border_width], color: border_color },
+                    TileVertex { position: [right + border_width, black_diff_y_bottom + border_width], color: border_color },
+                ];
+
+                let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Black Difficulty Button Border"),
+                    contents: bytemuck::cast_slice(&border_vertices),
+                    usage: wgpu::BufferUsages::VERTEX,
+                });
+                render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+                render_pass.draw_indexed(0..6, 0, 0..1);
+
+                // Inner button color - slightly darker when pressed
+                let color = if is_pressed {
+                    [0.4, 0.4, 0.55, 1.0] // Darker when pressed
+                } else if is_selected {
                     [0.5, 0.5, 0.7, 1.0] // Highlighted blue
                 } else {
                     [0.35, 0.35, 0.4, 1.0] // Normal
                 };
 
-                let left = diff_start_x + (i as f32) * (diff_button_width + diff_spacing);
-                let right = left + diff_button_width;
-
+                // Draw inner button
                 let vertices = [
                     TileVertex { position: [left, black_diff_y_top], color },
                     TileVertex { position: [right, black_diff_y_top], color },
@@ -2311,8 +2661,38 @@ impl Renderer for WgpuRenderer {
                 render_pass.draw_indexed(0..6, 0, 0..1);
             }
 
-            // Draw Start button at bottom
-            let start_color = [0.4, 0.55, 0.4, 1.0];
+            // Draw Start button at bottom with border
+            let is_start_pressed = matches!(pressed_button, Some(AISetupButton::Start));
+
+            // Start button border
+            let start_border_color = if is_start_pressed {
+                [0.9, 1.0, 0.9, 1.0] // Bright when pressed
+            } else {
+                [0.5, 0.65, 0.5, 1.0] // Normal border
+            };
+
+            let start_border_vertices = [
+                TileVertex { position: [-0.3 - border_width, -0.6 - border_width], color: start_border_color },
+                TileVertex { position: [0.3 + border_width, -0.6 - border_width], color: start_border_color },
+                TileVertex { position: [-0.3 - border_width, -0.75 + border_width], color: start_border_color },
+                TileVertex { position: [0.3 + border_width, -0.75 + border_width], color: start_border_color },
+            ];
+
+            let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Start Button Border"),
+                contents: bytemuck::cast_slice(&start_border_vertices),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
+            render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+            render_pass.draw_indexed(0..6, 0, 0..1);
+
+            // Start button inner
+            let start_color = if is_start_pressed {
+                [0.3, 0.45, 0.3, 1.0] // Darker when pressed
+            } else {
+                [0.4, 0.55, 0.4, 1.0] // Normal
+            };
+
             let start_vertices = [
                 TileVertex { position: [-0.3, -0.6], color: start_color },
                 TileVertex { position: [0.3, -0.6], color: start_color },
@@ -2601,5 +2981,179 @@ impl Renderer for WgpuRenderer {
 
         // Start button: x in [-0.3, 0.3], y in [-0.75, -0.6] (NDC), screen y in [0.6, 0.75]
         norm_x >= -0.3 && norm_x <= 0.3 && norm_y >= 0.6 && norm_y <= 0.75
+    }
+
+    // ===========================
+    // New Menu System Implementation
+    // ===========================
+
+    fn window_size(&self) -> (u32, u32) {
+        self.window_size
+    }
+
+    fn draw_menu_state(&mut self, state: &MenuState) {
+        let output = self.surface.get_current_texture().unwrap();
+        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Menu State Render Encoder"),
+        });
+
+        // Clear background
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Menu State Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: layout::colors::BACKGROUND[0] as f64,
+                            g: layout::colors::BACKGROUND[1] as f64,
+                            b: layout::colors::BACKGROUND[2] as f64,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
+
+            render_pass.set_pipeline(&self.tile_pipeline);
+            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+
+            match state {
+                MenuState::ModeSelection => {
+                    self.draw_button_rect(&mut render_pass, &layout::main_menu::PVP, layout::colors::PVP);
+                    self.draw_button_rect(&mut render_pass, &layout::main_menu::PVAI, layout::colors::PVAI);
+                    self.draw_button_rect(&mut render_pass, &layout::main_menu::AIVAI, layout::colors::AIVAI);
+                }
+                MenuState::SideSelection => {
+                    self.draw_button_rect(&mut render_pass, &layout::side_selection::WHITE, layout::colors::SIDE_WHITE);
+                    self.draw_button_rect(&mut render_pass, &layout::side_selection::BLACK, layout::colors::SIDE_BLACK);
+                }
+                MenuState::DifficultySelection { .. } => {
+                    let buttons = layout::difficulty::single_buttons();
+                    for button in &buttons {
+                        self.draw_button_rect(&mut render_pass, button, layout::colors::white_ai::NORMAL);
+                    }
+                }
+                MenuState::AIvAISetup(setup) => {
+                    // Draw white difficulty buttons
+                    let white_buttons = layout::difficulty::white_buttons();
+                    for (i, button) in white_buttons.iter().enumerate() {
+                        let is_selected = matches!(
+                            (i, setup.white_difficulty),
+                            (0, Difficulty::Easy) | (1, Difficulty::Medium) |
+                            (2, Difficulty::Hard) | (3, Difficulty::Expert)
+                        ) && i == difficulty_to_index(setup.white_difficulty);
+                        let color = if is_selected {
+                            layout::colors::white_ai::SELECTED
+                        } else {
+                            layout::colors::white_ai::NORMAL
+                        };
+                        self.draw_button_rect(&mut render_pass, button, color);
+                    }
+
+                    // Draw black difficulty buttons
+                    let black_buttons = layout::difficulty::black_buttons();
+                    for (i, button) in black_buttons.iter().enumerate() {
+                        let is_selected = i == difficulty_to_index(setup.black_difficulty);
+                        let color = if is_selected {
+                            layout::colors::black_ai::SELECTED
+                        } else {
+                            layout::colors::black_ai::NORMAL
+                        };
+                        self.draw_button_rect(&mut render_pass, button, color);
+                    }
+
+                    // Draw start button
+                    self.draw_button_rect(&mut render_pass, &layout::difficulty::START, layout::colors::START);
+                }
+            }
+        }
+
+        // Render text
+        let viewport_width = self.window_size.0 as f32;
+        let viewport_height = self.window_size.1 as f32;
+
+        self.viewport.update(&self.queue, glyphon::Resolution {
+            width: self.window_size.0,
+            height: self.window_size.1,
+        });
+
+        // Create text buffers based on state
+        let text_areas = match state {
+            MenuState::ModeSelection => {
+                self.prepare_mode_selection_text(viewport_width, viewport_height)
+            }
+            MenuState::SideSelection => {
+                self.prepare_side_selection_text(viewport_width, viewport_height)
+            }
+            MenuState::DifficultySelection { user_color } => {
+                self.prepare_difficulty_selection_text(viewport_width, viewport_height, *user_color)
+            }
+            MenuState::AIvAISetup(_) => {
+                self.prepare_aivai_setup_text(viewport_width, viewport_height)
+            }
+        };
+
+        self.text_renderer.prepare(
+            &self.device,
+            &self.queue,
+            &mut self.font_system,
+            &mut self.text_atlas,
+            &self.viewport,
+            text_areas.iter().map(|ta| TextArea {
+                buffer: &ta.buffer,
+                left: ta.left,
+                top: ta.top,
+                scale: 1.0,
+                bounds: glyphon::TextBounds {
+                    left: 0,
+                    top: 0,
+                    right: viewport_width as i32,
+                    bottom: viewport_height as i32,
+                },
+                default_color: ta.color,
+                custom_glyphs: &[],
+            }),
+            &mut self.swash_cache,
+        ).unwrap();
+
+        // Render text pass
+        {
+            let mut text_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Menu Text Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
+
+            self.text_renderer.render(&self.text_atlas, &self.viewport, &mut text_pass).unwrap();
+        }
+
+        self.queue.submit(std::iter::once(encoder.finish()));
+        output.present();
+    }
+}
+
+/// Helper function to convert Difficulty to button index
+fn difficulty_to_index(diff: Difficulty) -> usize {
+    match diff {
+        Difficulty::Easy => 0,
+        Difficulty::Medium => 1,
+        Difficulty::Hard => 2,
+        Difficulty::Expert => 3,
     }
 }

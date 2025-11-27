@@ -2,6 +2,7 @@ pub mod agent;
 pub mod assets;
 pub mod board;
 pub mod game_repr;
+pub mod menu;
 pub mod orchestrator;
 pub mod renderer;
 
