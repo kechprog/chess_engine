@@ -56,8 +56,8 @@ jobs:
 
       - name: Install wasm-pack
         run: |
-          curl -L https://github.com/nicholastmosher/wasm-pack/releases/download/v0.13.0/wasm-pack-v0.13.0-x86_64-unknown-linux-musl.tar.gz | tar xz
-          mv wasm-pack-v0.13.0-x86_64-unknown-linux-musl/wasm-pack ~/.cargo/bin/
+          curl -L https://github.com/rustwasm/wasm-pack/releases/download/v0.13.1/wasm-pack-v0.13.1-x86_64-unknown-linux-musl.tar.gz | tar xz
+          mv wasm-pack-v0.13.1-x86_64-unknown-linux-musl/wasm-pack ~/.cargo/bin/
 
       - name: Build WASM (release mode)
         run: wasm-pack build --target web --release
