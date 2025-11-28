@@ -480,24 +480,20 @@ impl WgpuRenderer {
     }
 
     fn update_board_dimensions(&mut self) {
-        let w_to_h = self.window_size.0 as f32 / self.window_size.1 as f32;
-
         // Reserve space for right panel (20% of width in NDC = 0.4 units)
-        // Board takes 80% of width when window is wider than tall
         let panel_width_ndc = 0.4_f32;
-        let max_board_width = 2.0 - panel_width_ndc; // 1.6 in NDC
+        let aspect_ratio = self.window_size.0 as f32 / self.window_size.1 as f32;
 
-        if w_to_h > 1.0 {
-            // Window is wider than tall
-            // Board should be square and fit within height
-            let board_width = (2.0 / w_to_h).min(max_board_width);
-            self.board_dimensions = (board_width, 2.0);
-        } else {
-            // Window is taller than wide - use full width (minus panel) and scale height
-            let board_width = max_board_width.min(2.0);
-            let board_height = board_width * w_to_h;
-            self.board_dimensions = (board_width, board_height.min(2.0));
-        }
+        // Board always fills full height (2.0 NDC units = y from -1 to 1)
+        let board_height = 2.0_f32;
+
+        // Board width preserves square aspect ratio
+        // For square board in pixels: pixel_width = pixel_height
+        // In NDC: board_width = (pixel_height / pixel_width) * 2.0 = 2.0 / aspect_ratio
+        // But cap it to leave room for right panel
+        let board_width = (board_height / aspect_ratio).min(2.0 - panel_width_ndc);
+
+        self.board_dimensions = (board_width, board_height);
     }
 
     /// Get the right edge of the board in NDC coordinates (for panel positioning)
@@ -1148,178 +1144,207 @@ impl Renderer for WgpuRenderer {
                 }
             }
 
-            // Draw controls bar buttons
-            render_pass.set_pipeline(&self.tile_pipeline);
-            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-
-            // Controls bar at bottom: y from 0.75 to 0.95 in NDC
-            let bar_top = 0.75_f32;
-            let bar_bottom = 0.95_f32;
-            let button_width = 0.15_f32;
-            let button_spacing = 0.05_f32;
-
-            // Undo button (left) - always enabled for now (state handled by orchestrator)
-            let undo_color = [0.4, 0.5, 0.4, 1.0];
-            let undo_left = -0.25_f32;
-            let undo_right = undo_left + button_width;
-
-            let undo_vertices = [
-                TileVertex { position: [undo_left, bar_top], color: undo_color },
-                TileVertex { position: [undo_right, bar_top], color: undo_color },
-                TileVertex { position: [undo_left, bar_bottom], color: undo_color },
-                TileVertex { position: [undo_right, bar_bottom], color: undo_color },
-            ];
-
-            let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Undo Button Vertex Buffer"),
-                contents: bytemuck::cast_slice(&undo_vertices),
-                usage: wgpu::BufferUsages::VERTEX,
-            });
-            render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
-            render_pass.draw_indexed(0..6, 0, 0..1);
-
-            // Redo button (center)
-            let redo_color = [0.4, 0.5, 0.4, 1.0];
-            let redo_left = undo_right + button_spacing;
-            let redo_right = redo_left + button_width;
-
-            let redo_vertices = [
-                TileVertex { position: [redo_left, bar_top], color: redo_color },
-                TileVertex { position: [redo_right, bar_top], color: redo_color },
-                TileVertex { position: [redo_left, bar_bottom], color: redo_color },
-                TileVertex { position: [redo_right, bar_bottom], color: redo_color },
-            ];
-
-            let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Redo Button Vertex Buffer"),
-                contents: bytemuck::cast_slice(&redo_vertices),
-                usage: wgpu::BufferUsages::VERTEX,
-            });
-            render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
-            render_pass.draw_indexed(0..6, 0, 0..1);
-
-            // Flip button (right)
-            let flip_color = [0.4, 0.4, 0.5, 1.0];
-            let flip_left = redo_right + button_spacing;
-            let flip_right = flip_left + button_width;
-
-            let flip_vertices = [
-                TileVertex { position: [flip_left, bar_top], color: flip_color },
-                TileVertex { position: [flip_right, bar_top], color: flip_color },
-                TileVertex { position: [flip_left, bar_bottom], color: flip_color },
-                TileVertex { position: [flip_right, bar_bottom], color: flip_color },
-            ];
-
-            let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Flip Button Vertex Buffer"),
-                contents: bytemuck::cast_slice(&flip_vertices),
-                usage: wgpu::BufferUsages::VERTEX,
-            });
-            render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
-            render_pass.draw_indexed(0..6, 0, 0..1);
         }
 
-        // Prepare and render control button text labels
-        let viewport_width = self.window_size.0 as f32;
-        let viewport_height = self.window_size.1 as f32;
-
-        self.viewport.update(&self.queue, glyphon::Resolution {
-            width: self.window_size.0,
-            height: self.window_size.1,
-        });
-
-        let mut undo_buffer = Buffer::new(&mut self.font_system, Metrics::new(24.0, 28.0));
-        undo_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
-        undo_buffer.set_text(&mut self.font_system, "<", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
-
-        let mut redo_buffer = Buffer::new(&mut self.font_system, Metrics::new(24.0, 28.0));
-        redo_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
-        redo_buffer.set_text(&mut self.font_system, ">", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
-
-        let mut flip_buffer = Buffer::new(&mut self.font_system, Metrics::new(24.0, 28.0));
-        flip_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
-        flip_buffer.set_text(&mut self.font_system, "R", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
-
-        let bar_center_ndc_y = (0.75 + 0.95) / 2.0;
-        let bar_center_y = (1.0 + bar_center_ndc_y) / 2.0 * viewport_height;
-
-        let undo_center_x = (1.0 + (-0.25 + 0.075)) / 2.0 * viewport_width;
-        let redo_center_x = (1.0 + (-0.05 + 0.075)) / 2.0 * viewport_width;
-        let flip_center_x = (1.0 + (0.15 + 0.075)) / 2.0 * viewport_width;
-
-        let text_areas = [
-            TextArea {
-                buffer: &undo_buffer,
-                left: undo_center_x - 8.0,
-                top: bar_center_y - 12.0,
-                scale: 1.0,
-                bounds: glyphon::TextBounds {
-                    left: 0,
-                    top: 0,
-                    right: viewport_width as i32,
-                    bottom: viewport_height as i32,
-                },
-                default_color: glyphon::Color::rgb(255, 255, 255),
-                custom_glyphs: &[],
-            },
-            TextArea {
-                buffer: &redo_buffer,
-                left: redo_center_x - 8.0,
-                top: bar_center_y - 12.0,
-                scale: 1.0,
-                bounds: glyphon::TextBounds {
-                    left: 0,
-                    top: 0,
-                    right: viewport_width as i32,
-                    bottom: viewport_height as i32,
-                },
-                default_color: glyphon::Color::rgb(255, 255, 255),
-                custom_glyphs: &[],
-            },
-            TextArea {
-                buffer: &flip_buffer,
-                left: flip_center_x - 8.0,
-                top: bar_center_y - 12.0,
-                scale: 1.0,
-                bounds: glyphon::TextBounds {
-                    left: 0,
-                    top: 0,
-                    right: viewport_width as i32,
-                    bottom: viewport_height as i32,
-                },
-                default_color: glyphon::Color::rgb(255, 255, 255),
-                custom_glyphs: &[],
-            },
-        ];
-
-        self.text_renderer.prepare(
-            &self.device,
-            &self.queue,
-            &mut self.font_system,
-            &mut self.text_atlas,
-            &self.viewport,
-            text_areas,
-            &mut self.swash_cache,
-        ).unwrap();
-
-        // Render text
+        // === Draw Controls Panel ===
+        // Three buttons stacked vertically at bottom-right: [Undo], [Redo], [Flip]
         {
-            let mut text_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Controls Text Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                occlusion_query_set: None,
-                timestamp_writes: None,
+            let board_right = self.board_right_edge_ndc();
+            let panel_left = board_right + 0.05;
+            let panel_right = 0.95_f32;
+
+            let button_height = 0.15_f32;
+            let button_spacing = 0.08_f32;
+
+            // Buttons stacked from bottom
+            let flip_bottom = 0.9_f32;
+            let flip_top = flip_bottom - button_height;
+
+            let redo_bottom = flip_top - button_spacing;
+            let redo_top = redo_bottom - button_height;
+
+            let undo_bottom = redo_top - button_spacing;
+            let undo_top = undo_bottom - button_height;
+
+            // Draw button backgrounds in a new render pass
+            {
+                let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("Controls Panel Render Pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    occlusion_query_set: None,
+                    timestamp_writes: None,
+                });
+
+                render_pass.set_pipeline(&self.tile_pipeline);
+                render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+
+                // Undo button (teal/green)
+                let undo_color = [0.2, 0.5, 0.4, 1.0];
+                let undo_vertices = [
+                    TileVertex { position: [panel_left, undo_top], color: undo_color },
+                    TileVertex { position: [panel_right, undo_top], color: undo_color },
+                    TileVertex { position: [panel_left, undo_bottom], color: undo_color },
+                    TileVertex { position: [panel_right, undo_bottom], color: undo_color },
+                ];
+                let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Undo Button Vertex Buffer"),
+                    contents: bytemuck::cast_slice(&undo_vertices),
+                    usage: wgpu::BufferUsages::VERTEX,
+                });
+                render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+                render_pass.draw_indexed(0..6, 0, 0..1);
+
+                // Redo button (orange/amber)
+                let redo_color = [0.6, 0.45, 0.2, 1.0];
+                let redo_vertices = [
+                    TileVertex { position: [panel_left, redo_top], color: redo_color },
+                    TileVertex { position: [panel_right, redo_top], color: redo_color },
+                    TileVertex { position: [panel_left, redo_bottom], color: redo_color },
+                    TileVertex { position: [panel_right, redo_bottom], color: redo_color },
+                ];
+                let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Redo Button Vertex Buffer"),
+                    contents: bytemuck::cast_slice(&redo_vertices),
+                    usage: wgpu::BufferUsages::VERTEX,
+                });
+                render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+                render_pass.draw_indexed(0..6, 0, 0..1);
+
+                // Flip button (blue/indigo)
+                let flip_color = [0.25, 0.35, 0.55, 1.0];
+                let flip_vertices = [
+                    TileVertex { position: [panel_left, flip_top], color: flip_color },
+                    TileVertex { position: [panel_right, flip_top], color: flip_color },
+                    TileVertex { position: [panel_left, flip_bottom], color: flip_color },
+                    TileVertex { position: [panel_right, flip_bottom], color: flip_color },
+                ];
+                let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Flip Button Vertex Buffer"),
+                    contents: bytemuck::cast_slice(&flip_vertices),
+                    usage: wgpu::BufferUsages::VERTEX,
+                });
+                render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+                render_pass.draw_indexed(0..6, 0, 0..1);
+            }
+
+            // Render text labels
+            let viewport_width = self.window_size.0 as f32;
+            let viewport_height = self.window_size.1 as f32;
+
+            self.viewport.update(&self.queue, glyphon::Resolution {
+                width: self.window_size.0,
+                height: self.window_size.1,
             });
 
-            self.text_renderer.render(&self.text_atlas, &self.viewport, &mut text_pass).unwrap();
+            let mut back_buffer = Buffer::new(&mut self.font_system, Metrics::new(20.0, 24.0));
+            back_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+            back_buffer.set_text(&mut self.font_system, "<< Back", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+            let back_text_width: f32 = back_buffer.layout_runs().map(|r| r.line_w).sum();
+
+            let mut next_buffer = Buffer::new(&mut self.font_system, Metrics::new(20.0, 24.0));
+            next_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+            next_buffer.set_text(&mut self.font_system, "Next >>", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+            let next_text_width: f32 = next_buffer.layout_runs().map(|r| r.line_w).sum();
+
+            let mut flip_buffer = Buffer::new(&mut self.font_system, Metrics::new(20.0, 24.0));
+            flip_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+            flip_buffer.set_text(&mut self.font_system, "Flip", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+            let flip_text_width: f32 = flip_buffer.layout_runs().map(|r| r.line_w).sum();
+
+            let button_center_x_ndc = (panel_left + panel_right) / 2.0;
+            let button_center_x = (1.0 + button_center_x_ndc) / 2.0 * viewport_width;
+
+            let back_center_y_ndc = (undo_top + undo_bottom) / 2.0;
+            let back_center_y = (1.0 - back_center_y_ndc) / 2.0 * viewport_height;
+
+            let next_center_y_ndc = (redo_top + redo_bottom) / 2.0;
+            let next_center_y = (1.0 - next_center_y_ndc) / 2.0 * viewport_height;
+
+            let flip_center_y_ndc = (flip_top + flip_bottom) / 2.0;
+            let flip_center_y = (1.0 - flip_center_y_ndc) / 2.0 * viewport_height;
+
+            let text_areas = [
+                TextArea {
+                    buffer: &back_buffer,
+                    left: button_center_x - back_text_width / 2.0,
+                    top: back_center_y - 10.0,
+                    scale: 1.0,
+                    bounds: glyphon::TextBounds {
+                        left: 0,
+                        top: 0,
+                        right: viewport_width as i32,
+                        bottom: viewport_height as i32,
+                    },
+                    default_color: glyphon::Color::rgb(255, 255, 255),
+                    custom_glyphs: &[],
+                },
+                TextArea {
+                    buffer: &next_buffer,
+                    left: button_center_x - next_text_width / 2.0,
+                    top: next_center_y - 10.0,
+                    scale: 1.0,
+                    bounds: glyphon::TextBounds {
+                        left: 0,
+                        top: 0,
+                        right: viewport_width as i32,
+                        bottom: viewport_height as i32,
+                    },
+                    default_color: glyphon::Color::rgb(255, 255, 255),
+                    custom_glyphs: &[],
+                },
+                TextArea {
+                    buffer: &flip_buffer,
+                    left: button_center_x - flip_text_width / 2.0,
+                    top: flip_center_y - 10.0,
+                    scale: 1.0,
+                    bounds: glyphon::TextBounds {
+                        left: 0,
+                        top: 0,
+                        right: viewport_width as i32,
+                        bottom: viewport_height as i32,
+                    },
+                    default_color: glyphon::Color::rgb(255, 255, 255),
+                    custom_glyphs: &[],
+                },
+            ];
+
+            self.text_renderer.prepare(
+                &self.device,
+                &self.queue,
+                &mut self.font_system,
+                &mut self.text_atlas,
+                &self.viewport,
+                text_areas,
+                &mut self.swash_cache,
+            ).unwrap();
+
+            // Render text
+            {
+                let mut text_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("Controls Text Render Pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    occlusion_query_set: None,
+                    timestamp_writes: None,
+                });
+
+                self.text_renderer.render(&self.text_atlas, &self.viewport, &mut text_pass).unwrap();
+            }
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
@@ -2253,7 +2278,7 @@ impl Renderer for WgpuRenderer {
 
     fn draw_controls_bar(&mut self, can_undo: bool, can_redo: bool) {
         // Controls panel on the right side of the board
-        // Two buttons stacked vertically: [Prev] and [Next]
+        // Three buttons stacked vertically at bottom: [Undo], [Redo], [Flip]
 
         let output = self.surface.get_current_texture().unwrap();
         let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -2269,15 +2294,20 @@ impl Renderer for WgpuRenderer {
 
         // Button dimensions in NDC
         let button_height = 0.15_f32;
-        let button_spacing = 0.1_f32;
+        let button_spacing = 0.08_f32;
 
-        // Prev button (top) - corresponds to Undo
-        let prev_top = -0.1_f32;
-        let prev_bottom = prev_top + button_height;
+        // Buttons stacked from bottom of window (y increases downward in NDC from -1 to 1)
+        // Flip button (bottom)
+        let flip_bottom = 0.9_f32;
+        let flip_top = flip_bottom - button_height;
 
-        // Next button (bottom) - corresponds to Redo
-        let next_top = prev_bottom + button_spacing;
-        let next_bottom = next_top + button_height;
+        // Redo button (middle)
+        let redo_bottom = flip_top - button_spacing;
+        let redo_top = redo_bottom - button_height;
+
+        // Undo button (top of the three)
+        let undo_bottom = redo_top - button_spacing;
+        let undo_top = undo_bottom - button_height;
 
         // Draw button backgrounds
         {
@@ -2299,35 +2329,52 @@ impl Renderer for WgpuRenderer {
             render_pass.set_pipeline(&self.tile_pipeline);
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
-            // Prev button
-            let prev_color = if can_undo { [0.35, 0.45, 0.35, 1.0] } else { [0.25, 0.25, 0.25, 0.7] };
-            let prev_vertices = [
-                TileVertex { position: [panel_left, prev_top], color: prev_color },
-                TileVertex { position: [panel_right, prev_top], color: prev_color },
-                TileVertex { position: [panel_left, prev_bottom], color: prev_color },
-                TileVertex { position: [panel_right, prev_bottom], color: prev_color },
+            // Undo button
+            let undo_color = if can_undo { [0.35, 0.45, 0.35, 1.0] } else { [0.25, 0.25, 0.25, 0.7] };
+            let undo_vertices = [
+                TileVertex { position: [panel_left, undo_top], color: undo_color },
+                TileVertex { position: [panel_right, undo_top], color: undo_color },
+                TileVertex { position: [panel_left, undo_bottom], color: undo_color },
+                TileVertex { position: [panel_right, undo_bottom], color: undo_color },
             ];
 
             let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Prev Button Vertex Buffer"),
-                contents: bytemuck::cast_slice(&prev_vertices),
+                label: Some("Undo Button Vertex Buffer"),
+                contents: bytemuck::cast_slice(&undo_vertices),
                 usage: wgpu::BufferUsages::VERTEX,
             });
             render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
             render_pass.draw_indexed(0..6, 0, 0..1);
 
-            // Next button
-            let next_color = if can_redo { [0.35, 0.45, 0.35, 1.0] } else { [0.25, 0.25, 0.25, 0.7] };
-            let next_vertices = [
-                TileVertex { position: [panel_left, next_top], color: next_color },
-                TileVertex { position: [panel_right, next_top], color: next_color },
-                TileVertex { position: [panel_left, next_bottom], color: next_color },
-                TileVertex { position: [panel_right, next_bottom], color: next_color },
+            // Redo button
+            let redo_color = if can_redo { [0.35, 0.45, 0.35, 1.0] } else { [0.25, 0.25, 0.25, 0.7] };
+            let redo_vertices = [
+                TileVertex { position: [panel_left, redo_top], color: redo_color },
+                TileVertex { position: [panel_right, redo_top], color: redo_color },
+                TileVertex { position: [panel_left, redo_bottom], color: redo_color },
+                TileVertex { position: [panel_right, redo_bottom], color: redo_color },
             ];
 
             let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Next Button Vertex Buffer"),
-                contents: bytemuck::cast_slice(&next_vertices),
+                label: Some("Redo Button Vertex Buffer"),
+                contents: bytemuck::cast_slice(&redo_vertices),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
+            render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+            render_pass.draw_indexed(0..6, 0, 0..1);
+
+            // Flip button (always enabled)
+            let flip_color = [0.35, 0.35, 0.45, 1.0]; // Slightly blue tint
+            let flip_vertices = [
+                TileVertex { position: [panel_left, flip_top], color: flip_color },
+                TileVertex { position: [panel_right, flip_top], color: flip_color },
+                TileVertex { position: [panel_left, flip_bottom], color: flip_color },
+                TileVertex { position: [panel_right, flip_bottom], color: flip_color },
+            ];
+
+            let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Flip Button Vertex Buffer"),
+                contents: bytemuck::cast_slice(&flip_vertices),
                 usage: wgpu::BufferUsages::VERTEX,
             });
             render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
@@ -2344,31 +2391,39 @@ impl Renderer for WgpuRenderer {
         });
 
         // Create text buffers for button labels
-        let mut prev_buffer = Buffer::new(&mut self.font_system, Metrics::new(20.0, 24.0));
-        prev_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
-        prev_buffer.set_text(&mut self.font_system, "Prev", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
-        let prev_text_width: f32 = prev_buffer.layout_runs().map(|r| r.line_w).sum();
+        let mut undo_buffer = Buffer::new(&mut self.font_system, Metrics::new(20.0, 24.0));
+        undo_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+        undo_buffer.set_text(&mut self.font_system, "Undo", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+        let undo_text_width: f32 = undo_buffer.layout_runs().map(|r| r.line_w).sum();
 
-        let mut next_buffer = Buffer::new(&mut self.font_system, Metrics::new(20.0, 24.0));
-        next_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
-        next_buffer.set_text(&mut self.font_system, "Next", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
-        let next_text_width: f32 = next_buffer.layout_runs().map(|r| r.line_w).sum();
+        let mut redo_buffer = Buffer::new(&mut self.font_system, Metrics::new(20.0, 24.0));
+        redo_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+        redo_buffer.set_text(&mut self.font_system, "Redo", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+        let redo_text_width: f32 = redo_buffer.layout_runs().map(|r| r.line_w).sum();
+
+        let mut flip_buffer = Buffer::new(&mut self.font_system, Metrics::new(20.0, 24.0));
+        flip_buffer.set_size(&mut self.font_system, Some(viewport_width), Some(viewport_height));
+        flip_buffer.set_text(&mut self.font_system, "Flip", Attrs::new().family(Family::SansSerif), glyphon::Shaping::Advanced);
+        let flip_text_width: f32 = flip_buffer.layout_runs().map(|r| r.line_w).sum();
 
         // Calculate button centers in screen coordinates
         let button_center_x_ndc = (panel_left + panel_right) / 2.0;
         let button_center_x = (1.0 + button_center_x_ndc) / 2.0 * viewport_width;
 
-        let prev_center_y_ndc = (prev_top + prev_bottom) / 2.0;
-        let prev_center_y = (1.0 - prev_center_y_ndc) / 2.0 * viewport_height;
+        let undo_center_y_ndc = (undo_top + undo_bottom) / 2.0;
+        let undo_center_y = (1.0 - undo_center_y_ndc) / 2.0 * viewport_height;
 
-        let next_center_y_ndc = (next_top + next_bottom) / 2.0;
-        let next_center_y = (1.0 - next_center_y_ndc) / 2.0 * viewport_height;
+        let redo_center_y_ndc = (redo_top + redo_bottom) / 2.0;
+        let redo_center_y = (1.0 - redo_center_y_ndc) / 2.0 * viewport_height;
+
+        let flip_center_y_ndc = (flip_top + flip_bottom) / 2.0;
+        let flip_center_y = (1.0 - flip_center_y_ndc) / 2.0 * viewport_height;
 
         let text_areas = [
             TextArea {
-                buffer: &prev_buffer,
-                left: button_center_x - prev_text_width / 2.0,
-                top: prev_center_y - 10.0,
+                buffer: &undo_buffer,
+                left: button_center_x - undo_text_width / 2.0,
+                top: undo_center_y - 10.0,
                 scale: 1.0,
                 bounds: glyphon::TextBounds {
                     left: 0,
@@ -2380,9 +2435,23 @@ impl Renderer for WgpuRenderer {
                 custom_glyphs: &[],
             },
             TextArea {
-                buffer: &next_buffer,
-                left: button_center_x - next_text_width / 2.0,
-                top: next_center_y - 10.0,
+                buffer: &redo_buffer,
+                left: button_center_x - redo_text_width / 2.0,
+                top: redo_center_y - 10.0,
+                scale: 1.0,
+                bounds: glyphon::TextBounds {
+                    left: 0,
+                    top: 0,
+                    right: viewport_width as i32,
+                    bottom: viewport_height as i32,
+                },
+                default_color: glyphon::Color::rgb(255, 255, 255),
+                custom_glyphs: &[],
+            },
+            TextArea {
+                buffer: &flip_buffer,
+                left: button_center_x - flip_text_width / 2.0,
+                top: flip_center_y - 10.0,
                 scale: 1.0,
                 bounds: glyphon::TextBounds {
                     left: 0,
@@ -2441,35 +2510,43 @@ impl Renderer for WgpuRenderer {
         let (adjusted_x, adjusted_y) = (coords.x, coords.y);
 
         let norm_x = (adjusted_x / self.window_size.0 as f64) * 2.0 - 1.0;
-        let norm_y = (adjusted_y / self.window_size.1 as f64) * 2.0 - 1.0;
+        // Y-axis is flipped: screen Y=0 is top, NDC Y=+1 is top
+        let norm_y = 1.0 - (adjusted_y / self.window_size.1 as f64) * 2.0;
 
         // Panel position (must match draw_controls_bar)
         let board_right = self.board_right_edge_ndc() as f64;
         let panel_left = board_right + 0.05;
         let panel_right = 0.95_f64;
 
-        // Button dimensions
+        // Button dimensions (must match draw_controls_bar)
         let button_height = 0.15_f64;
-        let button_spacing = 0.1_f64;
+        let button_spacing = 0.08_f64;
 
-        // Prev button bounds
-        let prev_top = -0.1_f64;
-        let prev_bottom = prev_top + button_height;
+        // Buttons stacked from bottom (must match draw_controls_bar)
+        // Flip button (bottom)
+        let flip_bottom = 0.9_f64;
+        let flip_top = flip_bottom - button_height;
 
-        // Next button bounds
-        let next_top = prev_bottom + button_spacing;
-        let next_bottom = next_top + button_height;
+        // Redo button (middle)
+        let redo_bottom = flip_top - button_spacing;
+        let redo_top = redo_bottom - button_height;
+
+        // Undo button (top of the three)
+        let undo_bottom = redo_top - button_spacing;
+        let undo_top = undo_bottom - button_height;
 
         // Check X range (must be in panel)
         if norm_x < panel_left || norm_x > panel_right {
             return None;
         }
 
-        // Check which button (Y is inverted in NDC)
-        if norm_y >= prev_top && norm_y <= prev_bottom {
+        // Check which button based on Y coordinate
+        if norm_y >= undo_top && norm_y <= undo_bottom {
             Some(super::ControlAction::Undo)
-        } else if norm_y >= next_top && norm_y <= next_bottom {
+        } else if norm_y >= redo_top && norm_y <= redo_bottom {
             Some(super::ControlAction::Redo)
+        } else if norm_y >= flip_top && norm_y <= flip_bottom {
+            Some(super::ControlAction::FlipBoard)
         } else {
             None
         }

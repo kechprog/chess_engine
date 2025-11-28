@@ -65,16 +65,14 @@ impl ApplicationHandler for App {
 
             let window_attrs = WindowAttributes::default()
                 .with_title("Chess Engine")
-                .with_inner_size(winit::dpi::LogicalSize::new(800.0, 800.0));
+                .with_inner_size(winit::dpi::LogicalSize::new(800.0, 800.0))
+                .with_min_inner_size(winit::dpi::LogicalSize::new(600.0, 600.0));
 
             let window = Arc::new(
                 event_loop
                     .create_window(window_attrs)
                     .expect("Failed to create window"),
             );
-
-            // Ensure minimum size
-            let _ = window.request_inner_size(winit::dpi::PhysicalSize::new(800, 800));
 
             self.window = Some(window.clone());
 
@@ -119,7 +117,8 @@ impl ApplicationHandler<UserEvent> for App {
             #[allow(unused_mut)]
             let mut window_attrs = WindowAttributes::default()
                 .with_title("Chess Engine")
-                .with_inner_size(winit::dpi::LogicalSize::new(800.0, 800.0));
+                .with_inner_size(winit::dpi::LogicalSize::new(800.0, 800.0))
+                .with_min_inner_size(winit::dpi::LogicalSize::new(600.0, 600.0));
 
             // Attach to canvas for WASM
             cfg_if! {

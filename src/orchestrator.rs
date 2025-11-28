@@ -234,7 +234,7 @@ impl Orchestrator {
                     // Draw board with promotion selection overlay
                     self.board.borrow_mut().draw_promotion_selection(self.current_turn);
                 } else {
-                    // Draw normal game board
+                    // Draw normal game board (includes controls panel)
                     self.board.borrow_mut().draw();
                 }
             }
