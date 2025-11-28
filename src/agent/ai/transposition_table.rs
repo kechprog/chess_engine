@@ -31,22 +31,22 @@ impl ZobristKeys {
         let mut pieces = [[[0u64; 64]; 2]; 6];
 
         // Generate random numbers for each piece-square combination
-        for piece_idx in 0..6 {
-            for color_idx in 0..2 {
-                for square in 0..64 {
-                    pieces[piece_idx][color_idx][square] = rng.gen();
+        for piece_type in &mut pieces {
+            for color in piece_type {
+                for square in color {
+                    *square = rng.gen();
                 }
             }
         }
 
         let mut castling = [0u64; 6];
-        for i in 0..6 {
-            castling[i] = rng.gen();
+        for castle in &mut castling {
+            *castle = rng.gen();
         }
 
         let mut en_passant = [0u64; 8];
-        for i in 0..8 {
-            en_passant[i] = rng.gen();
+        for ep in &mut en_passant {
+            *ep = rng.gen();
         }
 
         Self {
@@ -182,7 +182,7 @@ impl TranspositionTable {
 
             // Check if it was a pawn double move
             if moved_piece.piece_type == Type::Pawn {
-                let distance = if to > from { to - from } else { from - to };
+                let distance = to.abs_diff(from);
                 if distance == 16 {
                     // En passant square is between from and to
                     let ep_square = (from + to) / 2;
@@ -302,7 +302,7 @@ impl TranspositionTable {
             let last_piece = pos.position[last_to];
 
             if last_piece.piece_type == Type::Pawn {
-                let distance = if last_to > last_from { last_to - last_from } else { last_from - last_to };
+                let distance = last_to.abs_diff(last_from);
                 if distance == 16 {
                     let ep_square = (last_from + last_to) / 2;
                     let file = ep_square % 8;
@@ -313,7 +313,7 @@ impl TranspositionTable {
 
         // Add new en passant if this is a pawn double move
         if moving_piece.piece_type == Type::Pawn {
-            let distance = if to > from { to - from } else { from - to };
+            let distance = to.abs_diff(from);
             if distance == 16 {
                 let ep_square = (from + to) / 2;
                 let file = ep_square % 8;

@@ -63,14 +63,14 @@ impl Move {
     }
 
     pub fn move_type(&self) -> MoveType {
-        return (self.buf & 0xF).into();
+        (self.buf & 0xF).into()
     }
 
     pub fn _from(&self) -> usize {
-        return ((self.buf >> 10) & 0x3F) as usize;
+        ((self.buf >> 10) & 0x3F) as usize
     }
 
     pub fn _to(&self) -> usize {
-        return ((self.buf >> 4) & 0x3F) as usize;
+        ((self.buf >> 4) & 0x3F) as usize
     }
 }

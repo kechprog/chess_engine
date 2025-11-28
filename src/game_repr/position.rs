@@ -41,14 +41,14 @@ impl Position {
         let parts: Vec<&str> = fen_str.split_whitespace().collect();
 
         // Parse piece placement (always present)
-        let piece_placement = parts.get(0).unwrap_or(&"");
+        let piece_placement = parts.first().unwrap_or(&"");
         let mut idx: usize = 56;
         let mut board = [Piece::default(); 64];
 
         for c in piece_placement.chars() {
             match c {
                 '/' => {
-                    idx = idx - 16;
+                    idx -= 16;
                 }
                 '1'..='8' => {
                     idx += c.to_digit(10).unwrap() as usize;
@@ -647,7 +647,7 @@ impl Position {
         }
 
         // Side to move (even number of moves = white, odd = black)
-        let side_to_move = if self.prev_moves.len() % 2 == 0 { "w" } else { "b" };
+        let side_to_move = if self.prev_moves.len().is_multiple_of(2) { "w" } else { "b" };
         fen.push_str(&format!(" {}", side_to_move));
 
         // Castling availability
@@ -681,7 +681,7 @@ impl Position {
 
             // Check if it was a pawn double move
             if moved_piece.piece_type == Type::Pawn {
-                let distance = if to > from { to - from } else { from - to };
+                let distance = to.abs_diff(from);
                 if distance == 16 {
                     // En passant square is between from and to
                     let ep_square = (from + to) / 2;
@@ -712,7 +712,7 @@ impl Position {
     pub fn all_legal_moves_into(&self, moves: &mut SmallVec<[Move; 64]>) {
         moves.clear();
 
-        let current_side = if self.prev_moves.len() % 2 == 0 {
+        let current_side = if self.prev_moves.len().is_multiple_of(2) {
             Color::White
         } else {
             Color::Black
@@ -780,10 +780,8 @@ impl Position {
                     let mut i = moves.len();
                     while i > initial_len {
                         i -= 1;
-                        if moves[i].move_type() == MoveType::EnPassant {
-                            if !self.is_move_legal(moves[i]) {
-                                moves.swap_remove(i);
-                            }
+                        if moves[i].move_type() == MoveType::EnPassant && !self.is_move_legal(moves[i]) {
+                            moves.swap_remove(i);
                         }
                     }
                 }
@@ -802,8 +800,8 @@ impl Position {
     /// Makes a move and returns undo information
     /// This is more efficient than cloning the position
     pub fn make_move_undoable(&mut self, mv: Move) -> UndoInfo {
-        let to = mv._to() as usize;
-        let from = mv._from() as usize;
+        let to = mv._to();
+        let from = mv._from();
 
         // For en passant, the captured piece is not at the 'to' square
         let captured_piece = match mv.move_type() {
@@ -828,8 +826,8 @@ impl Position {
 
     /// Unmakes a move using undo information
     pub fn unmake_move(&mut self, mv: Move, undo: UndoInfo) {
-        let from = mv._from() as usize;
-        let to = mv._to() as usize;
+        let from = mv._from();
+        let to = mv._to();
 
         // Restore castling conditions
         self.castling_cond = undo.castling_cond;

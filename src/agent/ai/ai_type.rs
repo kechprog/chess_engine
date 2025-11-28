@@ -13,9 +13,10 @@ use std::sync::Arc;
 use std::cell::RefCell;
 
 /// Enumeration of available AI algorithms
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum AIType {
     /// Classical Negamax AI with alpha-beta pruning
+    #[default]
     Negamax,
     // Future: MCTS, Neural, Random, etc.
 }
@@ -105,12 +106,6 @@ impl AIType {
                 result.best_move
             }
         }
-    }
-}
-
-impl Default for AIType {
-    fn default() -> Self {
-        AIType::Negamax
     }
 }
 

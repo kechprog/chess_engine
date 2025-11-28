@@ -58,6 +58,7 @@ const NULL_MOVE_MIN_DEPTH: u8 = 3;
 ///
 /// (score, best_move) - Score from perspective of `color`, and the best move found
 /// Positive score = good for `color`, negative = good for opponent
+#[allow(clippy::too_many_arguments)]
 pub fn negamax(
     pos: &mut Position,
     depth: u8,

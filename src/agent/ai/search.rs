@@ -11,7 +11,7 @@ use super::move_ordering::{generate_ordered_moves, KillerMoves, HistoryTable};
 use std::time::Instant;
 
 /// Result of a search operation
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct SearchResult {
     pub best_move: Option<Move>,
     pub score: i32,

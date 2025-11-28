@@ -110,7 +110,7 @@ fn calculate_game_phase(pos: &Position) -> i32 {
     // Scale to 0-256 range (256 = opening, 0 = endgame)
     // TOTAL_PHASE is the phase value of starting position
     phase = (phase * 256 + (TOTAL_PHASE / 2)) / TOTAL_PHASE;
-    phase.min(256).max(0)
+    phase.clamp(0, 256)
 }
 
 /// Determine if position is in endgame phase (for backward compatibility)
@@ -171,13 +171,13 @@ fn evaluate_king_safety(pos: &Position, color: Color) -> TaperedScore {
     };
 
     for &rank in &pawn_ranks {
-        if rank < 0 || rank >= 8 {
+        if !(0..8).contains(&rank) {
             continue;
         }
 
         for file_offset in -1..=1 {
             let file = king_file + file_offset;
-            if file < 0 || file >= 8 {
+            if !(0..8).contains(&file) {
                 continue;
             }
 
@@ -249,7 +249,7 @@ fn is_passed_pawn(pos: &Position, square: usize, file: usize, color: Color) -> b
         // Check same file and adjacent files
         for file_offset in -1..=1 {
             let check_file = file as i32 + file_offset;
-            if check_file < 0 || check_file >= 8 {
+            if !(0..8).contains(&check_file) {
                 continue;
             }
 
@@ -283,7 +283,7 @@ fn count_piece_mobility(pos: &Position, square: usize, piece_type: Type, color: 
                 (rank - 1, file + 2), (rank - 1, file - 2),
             ];
             for (r, f) in knight_moves {
-                if r >= 0 && r < 8 && f >= 0 && f < 8 {
+                if (0..8).contains(&r) && (0..8).contains(&f) {
                     let to = (r * 8 + f) as usize;
                     let target_piece = pos.position[to];
                     // Count if square is empty or occupied by enemy
@@ -299,7 +299,7 @@ fn count_piece_mobility(pos: &Position, square: usize, piece_type: Type, color: 
             for (dr, df) in directions {
                 let mut r = rank + dr;
                 let mut f = file + df;
-                while r >= 0 && r < 8 && f >= 0 && f < 8 {
+                while (0..8).contains(&r) && (0..8).contains(&f) {
                     let to = (r * 8 + f) as usize;
                     let target_piece = pos.position[to];
                     if target_piece.is_none() {
@@ -321,7 +321,7 @@ fn count_piece_mobility(pos: &Position, square: usize, piece_type: Type, color: 
             for (dr, df) in directions {
                 let mut r = rank + dr;
                 let mut f = file + df;
-                while r >= 0 && r < 8 && f >= 0 && f < 8 {
+                while (0..8).contains(&r) && (0..8).contains(&f) {
                     let to = (r * 8 + f) as usize;
                     let target_piece = pos.position[to];
                     if target_piece.is_none() {
@@ -346,7 +346,7 @@ fn count_piece_mobility(pos: &Position, square: usize, piece_type: Type, color: 
             for (dr, df) in directions {
                 let mut r = rank + dr;
                 let mut f = file + df;
-                while r >= 0 && r < 8 && f >= 0 && f < 8 {
+                while (0..8).contains(&r) && (0..8).contains(&f) {
                     let to = (r * 8 + f) as usize;
                     let target_piece = pos.position[to];
                     if target_piece.is_none() {
@@ -371,7 +371,7 @@ fn count_piece_mobility(pos: &Position, square: usize, piece_type: Type, color: 
                     }
                     let r = rank + dr;
                     let f = file + df;
-                    if r >= 0 && r < 8 && f >= 0 && f < 8 {
+                    if (0..8).contains(&r) && (0..8).contains(&f) {
                         let to = (r * 8 + f) as usize;
                         let target_piece = pos.position[to];
                         if target_piece.is_none() || target_piece.color != color {
@@ -400,36 +400,26 @@ fn evaluate_mobility(pos: &Position, color: Color) -> TaperedScore {
         let move_count = count_piece_mobility(pos, square, piece.piece_type, color);
 
         let bonus = match piece.piece_type {
-            Type::Knight => {
-                let mut b = TaperedScore::default();
-                b.mg = KNIGHT_MOBILITY.mg * move_count;
-                b.eg = KNIGHT_MOBILITY.eg * move_count;
-                b
-            }
-            Type::Bishop => {
-                let mut b = TaperedScore::default();
-                b.mg = BISHOP_MOBILITY.mg * move_count;
-                b.eg = BISHOP_MOBILITY.eg * move_count;
-                b
-            }
-            Type::Rook => {
-                let mut b = TaperedScore::default();
-                b.mg = ROOK_MOBILITY.mg * move_count;
-                b.eg = ROOK_MOBILITY.eg * move_count;
-                b
-            }
-            Type::Queen => {
-                let mut b = TaperedScore::default();
-                b.mg = QUEEN_MOBILITY.mg * move_count;
-                b.eg = QUEEN_MOBILITY.eg * move_count;
-                b
-            }
-            Type::King => {
-                let mut b = TaperedScore::default();
-                b.mg = KING_MOBILITY.mg * move_count;
-                b.eg = KING_MOBILITY.eg * move_count;
-                b
-            }
+            Type::Knight => TaperedScore {
+                mg: KNIGHT_MOBILITY.mg * move_count,
+                eg: KNIGHT_MOBILITY.eg * move_count,
+            },
+            Type::Bishop => TaperedScore {
+                mg: BISHOP_MOBILITY.mg * move_count,
+                eg: BISHOP_MOBILITY.eg * move_count,
+            },
+            Type::Rook => TaperedScore {
+                mg: ROOK_MOBILITY.mg * move_count,
+                eg: ROOK_MOBILITY.eg * move_count,
+            },
+            Type::Queen => TaperedScore {
+                mg: QUEEN_MOBILITY.mg * move_count,
+                eg: QUEEN_MOBILITY.eg * move_count,
+            },
+            Type::King => TaperedScore {
+                mg: KING_MOBILITY.mg * move_count,
+                eg: KING_MOBILITY.eg * move_count,
+            },
             _ => TaperedScore::default(),
         };
 

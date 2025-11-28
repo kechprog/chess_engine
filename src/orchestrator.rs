@@ -182,6 +182,7 @@ impl Orchestrator {
     /// let orchestrator = Orchestrator::new(window, renderer);
     /// ```
     pub fn new(window: Arc<Window>, renderer: WgpuRenderer) -> Self {
+        #[allow(clippy::arc_with_non_send_sync)]
         let board = Arc::new(RefCell::new(Board::new(Box::new(renderer))));
 
         // TODO: Add logging once log crate is added to dependencies
@@ -837,28 +838,24 @@ impl Orchestrator {
         }
 
         // King and Bishop vs King
-        if white_pieces.len() == 2 && black_pieces.len() == 1 {
-            if count_type(&white_pieces, Type::Bishop) == 1 {
+        if white_pieces.len() == 2 && black_pieces.len() == 1
+            && count_type(&white_pieces, Type::Bishop) == 1 {
                 return true;
             }
-        }
-        if white_pieces.len() == 1 && black_pieces.len() == 2 {
-            if count_type(&black_pieces, Type::Bishop) == 1 {
+        if white_pieces.len() == 1 && black_pieces.len() == 2
+            && count_type(&black_pieces, Type::Bishop) == 1 {
                 return true;
             }
-        }
 
         // King and Knight vs King
-        if white_pieces.len() == 2 && black_pieces.len() == 1 {
-            if count_type(&white_pieces, Type::Knight) == 1 {
+        if white_pieces.len() == 2 && black_pieces.len() == 1
+            && count_type(&white_pieces, Type::Knight) == 1 {
                 return true;
             }
-        }
-        if white_pieces.len() == 1 && black_pieces.len() == 2 {
-            if count_type(&black_pieces, Type::Knight) == 1 {
+        if white_pieces.len() == 1 && black_pieces.len() == 2
+            && count_type(&black_pieces, Type::Knight) == 1 {
                 return true;
             }
-        }
 
         // King and Bishop vs King and Bishop (same colored bishops)
         if white_pieces.len() == 2 && black_pieces.len() == 2 {

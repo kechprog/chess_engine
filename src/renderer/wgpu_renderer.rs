@@ -663,7 +663,7 @@ impl WgpuRenderer {
         // Catppuccin-inspired colors
         let color = if is_selected {
             [0.84, 0.72, 0.56, 1.0] // Highlighted color
-        } else if (idx / 8 + idx % 8) % 2 == 0 {
+        } else if (idx / 8 + idx % 8).is_multiple_of(2) {
             [0.89, 0.89, 0.89, 1.0] // Light square
         } else {
             [0.47, 0.61, 0.68, 1.0] // Dark square
@@ -1374,7 +1374,7 @@ impl Renderer for WgpuRenderer {
         let board_bottom = 1.0 - self.board_dimensions.1 as f64;
 
         // Check if click is within board bounds
-        if ndc_x < board_left || ndc_x >= board_right || ndc_y > board_top || ndc_y <= board_bottom {
+        if !(board_left..board_right).contains(&ndc_x) || !(board_bottom..=board_top).contains(&ndc_y) {
             return None;
         }
 
@@ -1726,15 +1726,15 @@ impl Renderer for WgpuRenderer {
         match button_index {
             0 => {
                 // PvP button (top): NDC y [0.45, 0.25] -> screen norm_y in [-0.45, -0.25]
-                norm_x >= -0.5 && norm_x <= 0.5 && norm_y >= -0.45 && norm_y <= -0.25
+                (-0.5..=0.5).contains(&norm_x) && (-0.45..=-0.25).contains(&norm_y)
             }
             1 => {
                 // PvAI button (middle): NDC y [0.1, -0.1] -> screen norm_y in [-0.1, 0.1]
-                norm_x >= -0.5 && norm_x <= 0.5 && norm_y >= -0.1 && norm_y <= 0.1
+                (-0.5..=0.5).contains(&norm_x) && (-0.1..=0.1).contains(&norm_y)
             }
             2 => {
                 // AIvAI button (bottom): NDC y [-0.25, -0.45] -> screen norm_y in [0.25, 0.45]
-                norm_x >= -0.5 && norm_x <= 0.5 && norm_y >= 0.25 && norm_y <= 0.45
+                (-0.5..=0.5).contains(&norm_x) && (0.25..=0.45).contains(&norm_y)
             }
             _ => false,
         }
@@ -2034,7 +2034,7 @@ impl Renderer for WgpuRenderer {
             let y_min = y_pos - piece_size / 2.0;
             let y_max = y_pos + piece_size / 2.0;
 
-            if ndc_x >= x_min && ndc_x <= x_max && ndc_y >= y_min && ndc_y <= y_max {
+            if (x_min..=x_max).contains(&ndc_x) && (y_min..=y_max).contains(&ndc_y) {
                 return Some(piece_type);
             }
         }
@@ -2262,11 +2262,11 @@ impl Renderer for WgpuRenderer {
         match button_index {
             0 => {
                 // Play as White button (top): x in [-0.5, 0.5], y in [-0.3, -0.1] (in NDC, -Y is down)
-                norm_x >= -0.5 && norm_x <= 0.5 && norm_y >= -0.3 && norm_y <= -0.1
+                (-0.5..=0.5).contains(&norm_x) && (-0.3..=-0.1).contains(&norm_y)
             }
             1 => {
                 // Play as Black button (bottom): x in [-0.5, 0.5], y in [0.1, 0.3]
-                norm_x >= -0.5 && norm_x <= 0.5 && norm_y >= 0.1 && norm_y <= 0.3
+                (-0.5..=0.5).contains(&norm_x) && (0.1..=0.3).contains(&norm_y)
             }
             _ => false,
         }
@@ -2536,16 +2536,16 @@ impl Renderer for WgpuRenderer {
         let undo_top = undo_bottom - button_height;
 
         // Check X range (must be in panel)
-        if norm_x < panel_left || norm_x > panel_right {
+        if !(panel_left..=panel_right).contains(&norm_x) {
             return None;
         }
 
         // Check which button based on Y coordinate
-        if norm_y >= undo_top && norm_y <= undo_bottom {
+        if (undo_top..=undo_bottom).contains(&norm_y) {
             Some(super::ControlAction::Undo)
-        } else if norm_y >= redo_top && norm_y <= redo_bottom {
+        } else if (redo_top..=redo_bottom).contains(&norm_y) {
             Some(super::ControlAction::Redo)
-        } else if norm_y >= flip_top && norm_y <= flip_bottom {
+        } else if (flip_top..=flip_bottom).contains(&norm_y) {
             Some(super::ControlAction::FlipBoard)
         } else {
             None
@@ -2991,7 +2991,7 @@ impl Renderer for WgpuRenderer {
         let norm_y = (adjusted_y / self.window_size.1 as f64) * 2.0 - 1.0;
 
         // White difficulty buttons: y in [0.15, 0.27] (NDC), screen y in [-0.27, -0.15]
-        if norm_y < -0.27 || norm_y > -0.15 {
+        if !(-0.27..=-0.15).contains(&norm_y) {
             return None;
         }
 
@@ -3002,7 +3002,7 @@ impl Renderer for WgpuRenderer {
         for i in 0..4 {
             let left = diff_start_x + (i as f64) * (diff_button_width + diff_spacing);
             let right = left + diff_button_width;
-            if norm_x >= left && norm_x <= right {
+            if (left..=right).contains(&norm_x) {
                 return Some(i);
             }
         }
@@ -3024,7 +3024,7 @@ impl Renderer for WgpuRenderer {
         let norm_y = (adjusted_y / self.window_size.1 as f64) * 2.0 - 1.0;
 
         // Black difficulty buttons: y in [-0.35, -0.23] (NDC), screen y in [0.23, 0.35]
-        if norm_y < 0.23 || norm_y > 0.35 {
+        if !(0.23..=0.35).contains(&norm_y) {
             return None;
         }
 
@@ -3035,7 +3035,7 @@ impl Renderer for WgpuRenderer {
         for i in 0..4 {
             let left = diff_start_x + (i as f64) * (diff_button_width + diff_spacing);
             let right = left + diff_button_width;
-            if norm_x >= left && norm_x <= right {
+            if (left..=right).contains(&norm_x) {
                 return Some(i);
             }
         }
@@ -3057,7 +3057,7 @@ impl Renderer for WgpuRenderer {
         let norm_y = (adjusted_y / self.window_size.1 as f64) * 2.0 - 1.0;
 
         // Start button: x in [-0.3, 0.3], y in [-0.75, -0.6] (NDC), screen y in [0.6, 0.75]
-        norm_x >= -0.3 && norm_x <= 0.3 && norm_y >= 0.6 && norm_y <= 0.75
+        (-0.3..=0.3).contains(&norm_x) && (0.6..=0.75).contains(&norm_y)
     }
 
     // ===========================

@@ -56,8 +56,8 @@ impl Position {
         // En passant - only check if there was a previous move
         if !self.prev_moves.is_empty() {
             let prev_move = self.prev_moves.last().unwrap();
-            let prev_to = prev_move._to() as usize;
-            let prev_from = prev_move._from() as usize;
+            let prev_to = prev_move._to();
+            let prev_from = prev_move._from();
 
             // Check if last move was a two-square pawn advance
             if self.position[prev_to].piece_type == Type::Pawn

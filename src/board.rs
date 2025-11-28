@@ -1,6 +1,6 @@
 use crate::agent::player::GameResult;
 use crate::game_repr::{Color, Move, Piece, Position, UndoInfo};
-use crate::renderer::Renderer;
+use crate::renderer::{ControlAction, Renderer};
 use winit::dpi::PhysicalPosition;
 use smallvec::SmallVec;
 
@@ -432,7 +432,7 @@ impl Board {
     ///
     /// White moves on even move counts (0, 2, 4, ...), Black on odd (1, 3, 5, ...).
     pub fn current_turn(&self) -> Color {
-        if self.history_index % 2 == 0 {
+        if self.history_index.is_multiple_of(2) {
             Color::White
         } else {
             Color::Black
@@ -711,7 +711,7 @@ impl Board {
     ///
     /// * `Some(ControlAction)` - The action if coordinates are over a button
     /// * `None` - If not over any control button
-    pub fn get_control_action_at_coords(&self, coords: PhysicalPosition<f64>) -> Option<crate::renderer::ControlAction> {
+    pub fn get_control_action_at_coords(&self, coords: PhysicalPosition<f64>) -> Option<ControlAction> {
         self.renderer.get_control_action_at_coords(coords)
     }
 

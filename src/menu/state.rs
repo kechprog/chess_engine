@@ -28,9 +28,10 @@ impl Default for AIvAISetupState {
 /// Menu state machine.
 ///
 /// Represents the current screen/state of the menu system.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum MenuState {
     /// Main menu - select game mode (PvP, PvAI, AIvAI)
+    #[default]
     ModeSelection,
 
     /// Side selection for PvAI - choose to play as White or Black
@@ -45,12 +46,6 @@ pub enum MenuState {
 
     /// AI setup for AIvAI mode - configure both AIs
     AIvAISetup(AIvAISetupState),
-}
-
-impl Default for MenuState {
-    fn default() -> Self {
-        Self::ModeSelection
-    }
 }
 
 impl MenuState {
