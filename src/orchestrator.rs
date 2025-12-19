@@ -188,6 +188,10 @@ impl Orchestrator {
         // TODO: Add logging once log crate is added to dependencies
         // log::debug!("Orchestrator created in Menu mode");
 
+        // Initialize menu with current scale factor
+        let mut menu = Menu::new();
+        menu.update_scale_factor(window.scale_factor());
+
         Self {
             window,
             board,
@@ -198,7 +202,7 @@ impl Orchestrator {
             starting_fen: String::new(),
             game_result: None,
             pending_promotion: None,
-            menu: Menu::new(),
+            menu,
             menu_state: MenuState::ModeSelection,
             user_color_choice: None,
             white_ai_config: None,
@@ -243,6 +247,14 @@ impl Orchestrator {
             WindowEvent::Resized(_new_size) => {
                 self.board.borrow_mut().resize((_new_size.width, _new_size.height));
                 self.menu.update_window_size((_new_size.width, _new_size.height));
+                // Update scale factor in case it changed (e.g., moved to different monitor)
+                self.menu.update_scale_factor(self.window.scale_factor());
+                self.window.request_redraw();
+            }
+
+            WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                // Update menu's scale factor when it changes (e.g., moved to different monitor)
+                self.menu.update_scale_factor(scale_factor);
                 self.window.request_redraw();
             }
 

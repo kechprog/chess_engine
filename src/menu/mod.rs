@@ -49,6 +49,9 @@ pub struct Menu {
     mouse_pos: PhysicalPosition<f64>,
     /// Window size for coordinate conversion
     window_size: (u32, u32),
+    /// Scale factor for WASM coordinate adjustment
+    /// On native platforms this is typically 1.0, on WASM it reflects devicePixelRatio
+    scale_factor: f64,
 }
 
 impl Menu {
@@ -58,6 +61,7 @@ impl Menu {
             state: MenuState::default(),
             mouse_pos: PhysicalPosition::new(0.0, 0.0),
             window_size: (800, 800),
+            scale_factor: 1.0,
         }
     }
 
@@ -74,6 +78,15 @@ impl Menu {
     /// Update the window size (for coordinate conversion).
     pub fn update_window_size(&mut self, size: (u32, u32)) {
         self.window_size = size;
+    }
+
+    /// Update the scale factor (for WASM coordinate adjustment).
+    ///
+    /// On native platforms, this should be 1.0. On WASM, this reflects
+    /// the browser's devicePixelRatio and is needed to correctly convert
+    /// mouse coordinates to normalized device coordinates.
+    pub fn update_scale_factor(&mut self, scale_factor: f64) {
+        self.scale_factor = scale_factor;
     }
 
     /// Handle the Escape key - go back one level.
@@ -93,7 +106,17 @@ impl Menu {
     /// Returns `Some(GameConfig)` if the user has completed their selection
     /// and a game should start. Returns `None` if the menu should continue.
     pub fn handle_click(&mut self) -> Option<GameConfig> {
+        // Apply scale factor adjustment for WASM
+        // On WASM, mouse coordinates are in CSS pixels but window_size is in physical pixels
+        // Dividing by scale_factor converts CSS pixels to match the coordinate system
+        #[cfg(target_arch = "wasm32")]
+        let pos = PhysicalPosition::new(
+            self.mouse_pos.x / self.scale_factor,
+            self.mouse_pos.y / self.scale_factor,
+        );
+        #[cfg(not(target_arch = "wasm32"))]
         let pos = self.mouse_pos;
+
         let size = self.window_size;
 
         match &mut self.state {
