@@ -30,6 +30,12 @@
             width: 100%;
             height: 100%;
             touch-action: none;
+            outline: none; /* Remove default focus outline */
+        }
+
+        #chess-canvas:focus {
+            /* Subtle focus indicator for accessibility */
+            box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.3);
         }
 
         #loading {
@@ -74,7 +80,7 @@
     </style>
 </head>
 <body>
-    <canvas id="chess-canvas"></canvas>
+    <canvas id="chess-canvas" tabindex="0"></canvas>
     <div id="loading">
         <div>Loading Chess Engine...</div>
         <div class="spinner"></div>
@@ -98,6 +104,23 @@
                 setTimeout(() => {
                     loading.style.display = 'none';
                 }, 500);
+
+                // Setup focus handler for keyboard input support
+                const canvas = document.getElementById('chess-canvas');
+                if (canvas) {
+                    // Focus canvas on click to enable keyboard events
+                    canvas.addEventListener('click', function() {
+                        this.focus();
+                    });
+                    // Focus canvas on touch for mobile keyboard support
+                    canvas.addEventListener('touchstart', function() {
+                        this.focus();
+                    });
+                    // Prevent context menu on right-click
+                    canvas.addEventListener('contextmenu', function(e) {
+                        e.preventDefault();
+                    });
+                }
 
             } catch (e) {
                 console.error('Failed to load WASM module:', e);

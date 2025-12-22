@@ -70,7 +70,7 @@ use crate::game_repr::{Color, Move};
 use crate::agent::player::Player;
 use std::cell::RefCell;
 use std::sync::Arc;
-use winit::event::{ElementState, MouseButton, WindowEvent};
+use winit::event::{ElementState, MouseButton, Touch, TouchPhase, WindowEvent};
 
 /// Human player that makes moves via GUI interaction.
 ///
@@ -286,6 +286,25 @@ impl Player for HumanPlayer {
             }
             WindowEvent::CursorMoved { position, .. } => {
                 self.board.borrow_mut().update_mouse_pos(*position);
+            }
+            // Touch input handling for mobile/tablet support
+            WindowEvent::Touch(Touch {
+                phase,
+                location,
+                ..
+            }) => {
+                match phase {
+                    TouchPhase::Started => {
+                        // Update position from touch and trigger click
+                        self.board.borrow_mut().update_mouse_pos(*location);
+                        self.handle_click();
+                    }
+                    TouchPhase::Moved => {
+                        // Update position during touch drag
+                        self.board.borrow_mut().update_mouse_pos(*location);
+                    }
+                    _ => {}
+                }
             }
             _ => {}
         }

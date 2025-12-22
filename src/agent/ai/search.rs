@@ -8,6 +8,11 @@ use crate::game_repr::{Position, Move, Color};
 use super::transposition_table::TranspositionTable;
 use super::negamax::negamax;
 use super::move_ordering::{generate_ordered_moves, KillerMoves, HistoryTable};
+
+// Use web-time for WASM compatibility (std::time::Instant doesn't work reliably in WASM)
+#[cfg(target_arch = "wasm32")]
+use web_time::Instant;
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
 /// Result of a search operation

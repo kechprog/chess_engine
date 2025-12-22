@@ -1003,6 +1003,27 @@ impl WgpuRenderer {
 
         result
     }
+
+    /// Adjusts screen coordinates for platform-specific differences.
+    ///
+    /// On WASM, browser provides coordinates in CSS pixels which need to be
+    /// converted to logical pixels by dividing by the scale factor.
+    /// On native platforms, coordinates already match the window size.
+    ///
+    /// This method centralizes the platform-specific coordinate adjustment
+    /// to avoid code duplication across all hit-testing methods.
+    fn adjust_coords(&self, coords: PhysicalPosition<f64>) -> (f64, f64) {
+        #[cfg(target_arch = "wasm32")]
+        {
+            let scale_factor = self.window.scale_factor();
+            (coords.x / scale_factor, coords.y / scale_factor)
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            (coords.x, coords.y)
+        }
+    }
 }
 
 /// Owned text area data for preparing text rendering
@@ -1352,16 +1373,7 @@ impl Renderer for WgpuRenderer {
     }
 
     fn coord_to_tile(&self, coords: PhysicalPosition<f64>, pov: Color) -> Option<u8> {
-        // WASM needs scale factor adjustment due to browser CSS pixel coordinate system
-        // Native platforms receive coords already in physical pixels matching window_size
-        #[cfg(target_arch = "wasm32")]
-        let (adjusted_x, adjusted_y) = {
-            let scale_factor = self.window.scale_factor();
-            (coords.x / scale_factor, coords.y / scale_factor)
-        };
-
-        #[cfg(not(target_arch = "wasm32"))]
-        let (adjusted_x, adjusted_y) = (coords.x, coords.y);
+        let (adjusted_x, adjusted_y) = self.adjust_coords(coords);
 
         // Convert screen coordinates to NDC (-1 to 1)
         let ndc_x = (adjusted_x / self.window_size.0 as f64) * 2.0 - 1.0;
@@ -1710,15 +1722,7 @@ impl Renderer for WgpuRenderer {
     }
 
     fn is_coord_in_button(&self, coords: PhysicalPosition<f64>, button_index: usize) -> bool {
-        // Convert physical coordinates to normalized device coordinates (-1 to 1)
-        #[cfg(target_arch = "wasm32")]
-        let (adjusted_x, adjusted_y) = {
-            let scale_factor = self.window.scale_factor();
-            (coords.x / scale_factor, coords.y / scale_factor)
-        };
-
-        #[cfg(not(target_arch = "wasm32"))]
-        let (adjusted_x, adjusted_y) = (coords.x, coords.y);
+        let (adjusted_x, adjusted_y) = self.adjust_coords(coords);
 
         let norm_x = (adjusted_x / self.window_size.0 as f64) * 2.0 - 1.0;
         let norm_y = (adjusted_y / self.window_size.1 as f64) * 2.0 - 1.0;
@@ -1998,15 +2002,7 @@ impl Renderer for WgpuRenderer {
     }
 
     fn get_promotion_piece_at_coords(&self, coords: PhysicalPosition<f64>) -> Option<Type> {
-        // Convert screen coordinates to NDC
-        #[cfg(target_arch = "wasm32")]
-        let (adjusted_x, adjusted_y) = {
-            let scale_factor = self.window.scale_factor();
-            (coords.x / scale_factor, coords.y / scale_factor)
-        };
-
-        #[cfg(not(target_arch = "wasm32"))]
-        let (adjusted_x, adjusted_y) = (coords.x, coords.y);
+        let (adjusted_x, adjusted_y) = self.adjust_coords(coords);
 
         // Convert to NDC coordinates (-1 to 1)
         let ndc_x = (adjusted_x / self.window_size.0 as f64) * 2.0 - 1.0;
@@ -2246,15 +2242,7 @@ impl Renderer for WgpuRenderer {
     }
 
     fn is_coord_in_side_button(&self, coords: PhysicalPosition<f64>, button_index: usize) -> bool {
-        // Convert physical coordinates to normalized device coordinates (-1 to 1)
-        #[cfg(target_arch = "wasm32")]
-        let (adjusted_x, adjusted_y) = {
-            let scale_factor = self.window.scale_factor();
-            (coords.x / scale_factor, coords.y / scale_factor)
-        };
-
-        #[cfg(not(target_arch = "wasm32"))]
-        let (adjusted_x, adjusted_y) = (coords.x, coords.y);
+        let (adjusted_x, adjusted_y) = self.adjust_coords(coords);
 
         let norm_x = (adjusted_x / self.window_size.0 as f64) * 2.0 - 1.0;
         let norm_y = (adjusted_y / self.window_size.1 as f64) * 2.0 - 1.0;
@@ -2499,15 +2487,7 @@ impl Renderer for WgpuRenderer {
     }
 
     fn get_control_action_at_coords(&self, coords: PhysicalPosition<f64>) -> Option<super::ControlAction> {
-        // Convert physical coordinates to normalized device coordinates (-1 to 1)
-        #[cfg(target_arch = "wasm32")]
-        let (adjusted_x, adjusted_y) = {
-            let scale_factor = self.window.scale_factor();
-            (coords.x / scale_factor, coords.y / scale_factor)
-        };
-
-        #[cfg(not(target_arch = "wasm32"))]
-        let (adjusted_x, adjusted_y) = (coords.x, coords.y);
+        let (adjusted_x, adjusted_y) = self.adjust_coords(coords);
 
         let norm_x = (adjusted_x / self.window_size.0 as f64) * 2.0 - 1.0;
         // Y-axis is flipped: screen Y=0 is top, NDC Y=+1 is top
@@ -2978,14 +2958,7 @@ impl Renderer for WgpuRenderer {
     }
 
     fn get_white_difficulty_at_coords(&self, coords: PhysicalPosition<f64>) -> Option<usize> {
-        #[cfg(target_arch = "wasm32")]
-        let (adjusted_x, adjusted_y) = {
-            let scale_factor = self.window.scale_factor();
-            (coords.x / scale_factor, coords.y / scale_factor)
-        };
-
-        #[cfg(not(target_arch = "wasm32"))]
-        let (adjusted_x, adjusted_y) = (coords.x, coords.y);
+        let (adjusted_x, adjusted_y) = self.adjust_coords(coords);
 
         let norm_x = (adjusted_x / self.window_size.0 as f64) * 2.0 - 1.0;
         let norm_y = (adjusted_y / self.window_size.1 as f64) * 2.0 - 1.0;
@@ -3011,14 +2984,7 @@ impl Renderer for WgpuRenderer {
     }
 
     fn get_black_difficulty_at_coords(&self, coords: PhysicalPosition<f64>) -> Option<usize> {
-        #[cfg(target_arch = "wasm32")]
-        let (adjusted_x, adjusted_y) = {
-            let scale_factor = self.window.scale_factor();
-            (coords.x / scale_factor, coords.y / scale_factor)
-        };
-
-        #[cfg(not(target_arch = "wasm32"))]
-        let (adjusted_x, adjusted_y) = (coords.x, coords.y);
+        let (adjusted_x, adjusted_y) = self.adjust_coords(coords);
 
         let norm_x = (adjusted_x / self.window_size.0 as f64) * 2.0 - 1.0;
         let norm_y = (adjusted_y / self.window_size.1 as f64) * 2.0 - 1.0;
@@ -3044,14 +3010,7 @@ impl Renderer for WgpuRenderer {
     }
 
     fn is_coord_in_start_button(&self, coords: PhysicalPosition<f64>) -> bool {
-        #[cfg(target_arch = "wasm32")]
-        let (adjusted_x, adjusted_y) = {
-            let scale_factor = self.window.scale_factor();
-            (coords.x / scale_factor, coords.y / scale_factor)
-        };
-
-        #[cfg(not(target_arch = "wasm32"))]
-        let (adjusted_x, adjusted_y) = (coords.x, coords.y);
+        let (adjusted_x, adjusted_y) = self.adjust_coords(coords);
 
         let norm_x = (adjusted_x / self.window_size.0 as f64) * 2.0 - 1.0;
         let norm_y = (adjusted_y / self.window_size.1 as f64) * 2.0 - 1.0;

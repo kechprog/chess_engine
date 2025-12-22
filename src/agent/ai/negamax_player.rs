@@ -81,12 +81,30 @@ impl Difficulty {
     ///
     /// Returns the number of plies (half-moves) to search. A depth of 6 means
     /// the AI looks 3 full moves ahead (White's move, Black's move, White's move).
+    ///
+    /// Note: WASM builds use reduced depths because the search blocks the main
+    /// thread and would freeze the browser UI. Native builds use full depths.
     pub fn max_depth(&self) -> u8 {
-        match self {
-            Difficulty::Easy => 2,
-            Difficulty::Medium => 4,
-            Difficulty::Hard => 6,
-            Difficulty::Expert => 8,
+        #[cfg(target_arch = "wasm32")]
+        {
+            // Reduced depths for WASM to prevent UI freezing
+            // The search is synchronous and blocks the browser's event loop
+            match self {
+                Difficulty::Easy => 1,
+                Difficulty::Medium => 2,
+                Difficulty::Hard => 3,
+                Difficulty::Expert => 4,
+            }
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            match self {
+                Difficulty::Easy => 2,
+                Difficulty::Medium => 4,
+                Difficulty::Hard => 6,
+                Difficulty::Expert => 8,
+            }
         }
     }
 

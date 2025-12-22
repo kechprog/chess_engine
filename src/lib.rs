@@ -12,6 +12,7 @@ mod wasm {
     use crate::renderer::wgpu_renderer::WgpuRenderer;
     use std::sync::Arc;
     use wasm_bindgen::prelude::*;
+    use wasm_bindgen::JsCast;
     use winit::{
         application::ApplicationHandler,
         event::WindowEvent,
@@ -55,13 +56,27 @@ mod wasm {
                     .with_title("Chess Engine - WASM")
                     .with_inner_size(winit::dpi::LogicalSize::new(800.0, 800.0));
 
-                // Attach to canvas for WASM
-                if let Some(canvas) = web_sys::window()
+                // Find and attach to canvas element, with validation
+                let canvas_result = web_sys::window()
                     .and_then(|win| win.document())
                     .and_then(|doc| doc.get_element_by_id("chess-canvas"))
-                    .and_then(|element| element.dyn_into::<web_sys::HtmlCanvasElement>().ok())
-                {
-                    window_attrs = window_attrs.with_canvas(Some(canvas));
+                    .and_then(|element| element.dyn_into::<web_sys::HtmlCanvasElement>().ok());
+
+                match canvas_result {
+                    Some(canvas) => {
+                        // Enable focusable for keyboard input and prevent default browser behaviors
+                        window_attrs = window_attrs
+                            .with_canvas(Some(canvas))
+                            .with_focusable(true)
+                            .with_prevent_default(true);
+                    }
+                    None => {
+                        web_sys::console::error_1(
+                            &"Failed to find canvas element with id 'chess-canvas'. \
+                              Make sure the HTML contains: <canvas id=\"chess-canvas\" tabindex=\"0\"></canvas>".into()
+                        );
+                        return;
+                    }
                 }
 
                 let window = Arc::new(
