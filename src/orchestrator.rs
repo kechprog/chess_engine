@@ -33,7 +33,7 @@ use crate::renderer::wgpu_renderer::WgpuRenderer;
 use crate::renderer::ControlAction;
 use std::cell::RefCell;
 use std::sync::Arc;
-use winit::event::WindowEvent;
+use winit::event::{Touch, TouchPhase, WindowEvent};
 use winit::keyboard::{Key, NamedKey};
 use winit::window::Window;
 
@@ -345,6 +345,81 @@ impl Orchestrator {
                             Color::Black => player2,
                         };
                         current_player.handle_event(&event);
+                    }
+                }
+            }
+
+            // Touch input handling - mirrors MouseInput + CursorMoved for mobile/tablet support
+            WindowEvent::Touch(Touch { phase, location, .. }) => {
+                match phase {
+                    TouchPhase::Started => {
+                        // Update position first (like CursorMoved does for mouse)
+                        self.board.borrow_mut().update_mouse_pos(location);
+                        self.menu.update_mouse_pos(location);
+
+                        // Then handle click (mirrors MouseInput with ElementState::Pressed)
+                        if self.game_mode == GameMode::Menu {
+                            // Handle menu button clicks
+                            if let Some(config) = self.menu.handle_click() {
+                                self.start_game_from_config(config);
+                                return;
+                            }
+                            self.window.request_redraw();
+                        } else if self.game_result.is_some() {
+                            // Handle game end overlay clicks
+                            let board = self.board.borrow();
+                            let touch_pos = board.mouse_pos();
+                            if let Some(action) = board.renderer().get_control_action_at_coords(touch_pos) {
+                                drop(board);
+                                self.handle_control_action(action);
+                            } else {
+                                drop(board);
+                                self.return_to_menu();
+                            }
+                        } else if self.pending_promotion.is_some() {
+                            // Handle promotion piece selection
+                            self.handle_promotion_click();
+                        } else if self.game_active {
+                            // Handle board and control button clicks
+                            let board = self.board.borrow();
+                            let touch_pos = board.mouse_pos();
+                            if let Some(action) = board.renderer().get_control_action_at_coords(touch_pos) {
+                                drop(board);
+                                self.handle_control_action(action);
+                            } else {
+                                drop(board);
+                                // Delegate to current player
+                                if let Some((player1, player2)) = &mut self.players {
+                                    let current_player = match self.current_turn {
+                                        Color::White => player1,
+                                        Color::Black => player2,
+                                    };
+                                    current_player.handle_event(&event);
+                                    self.window.request_redraw();
+                                    self.poll_current_player();
+                                }
+                            }
+                        }
+                    }
+                    TouchPhase::Moved => {
+                        // Update position during touch drag (like CursorMoved)
+                        self.board.borrow_mut().update_mouse_pos(location);
+                        self.menu.update_mouse_pos(location);
+
+                        // Delegate to player if game is active
+                        if self.game_active {
+                            if let Some((player1, player2)) = &mut self.players {
+                                let current_player = match self.current_turn {
+                                    Color::White => player1,
+                                    Color::Black => player2,
+                                };
+                                current_player.handle_event(&event);
+                            }
+                        }
+                    }
+                    TouchPhase::Ended | TouchPhase::Cancelled => {
+                        // Touch ended - no action needed for click-based interaction
+                        // Could be used for drag-and-drop in the future
                     }
                 }
             }
